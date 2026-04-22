@@ -33,9 +33,33 @@ def create_app():
         ])
 
     brute_tracker = {}
+    admin_guard = {}
 
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
+
+    def check_admin_bruteforce(username):
+        state = admin_guard.setdefault(username, {"count": 0, "first": time.time(), "locked_until": 0})
+        now = time.time()
+        if state["locked_until"] > now:
+            return False, int(state["locked_until"] - now)
+        if now - state["first"] > 600:
+            state["count"] = 0
+            state["first"] = now
+        return True, 0
+
+    def register_admin_failure(username):
+        state = admin_guard.setdefault(username, {"count": 0, "first": time.time(), "locked_until": 0})
+        now = time.time()
+        if now - state["first"] > 600:
+            state["count"] = 0
+            state["first"] = now
+        state["count"] += 1
+        if state["count"] >= 3:
+            state["locked_until"] = now + 1800
+
+    def reset_admin_failures(username):
+        admin_guard[username] = {"count": 0, "first": time.time(), "locked_until": 0}
 
     def login_required(fn):
         @wraps(fn)
@@ -94,8 +118,20 @@ def create_app():
                 user = cur.fetchone()
             if not user:
                 return "User does not exist", 404
+            if user["role"] == "admin":
+                allowed, wait_for = check_admin_bruteforce(username)
+                if not allowed:
+                    return f"Admin login temporarily locked. Retry in {wait_for} sec", 429
+                admin_otp = request.form.get("admin_otp", "")
+                if admin_otp != os.getenv("ADMIN_OTP", "A9-KNOWN-ONLY-TO-TEAM"):
+                    register_admin_failure(username)
+                    return "Admin second factor failed", 401
             if user["password"] != password:
+                if user["role"] == "admin":
+                    register_admin_failure(username)
                 return "Wrong password", 401
+            if user["role"] == "admin":
+                reset_admin_failures(username)
             session["pre_2fa_user"] = user["id"]
             return redirect(url_for("verify_2fa"))
         return render_template("login.html")

@@ -10,6 +10,7 @@ services:
       - MYSQL_PASSWORD=vulnshop
       - MYSQL_DB=vulnshop
       - MONGO_URL=mongodb://mongo:27017
+      - ADMIN_OTP=SUPER-ADMIN-OTP
     depends_on:
       - mysql
       - mongo
