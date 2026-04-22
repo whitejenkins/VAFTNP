@@ -1,21 +1,21 @@
 {% extends 'base.html' %}
-{% block title %}VulnShop - Каталог{% endblock %}
+{% block title %}VulnShop - Catalog{% endblock %}
 {% block content %}
 <section class="hero">
   <div class="panel">
-    <h1>Современный магазин цифровых и офисных товаров</h1>
-    <p class="muted">Выбирайте товары, добавляйте в корзину и оформляйте заказы. Интерфейс реалистичный, внутри — учебные сценарии для пентеста.</p>
+    <h1>Modern store for gadgets and office essentials</h1>
+    <p class="muted">Browse products, add items to your cart, and place orders. UI is realistic; backend intentionally includes training vulnerabilities.</p>
   </div>
   <div class="panel">
     <form method="get">
-      <input name="q" value="{{ q }}" placeholder="Поиск по названию">
+      <input name="q" value="{{ q }}" placeholder="Search by product name">
       <select name="category">
-        <option value="">Все категории</option>
+        <option value="">All categories</option>
         {% for c in categories %}
           <option value="{{c}}" {% if c == selected_category %}selected{% endif %}>{{c}}</option>
         {% endfor %}
       </select>
-      <button class="btn">Найти</button>
+      <button class="btn">Search</button>
     </form>
   </div>
 </section>
@@ -26,8 +26,8 @@
     <p class="muted">{{p.description}}</p>
     <p class="muted">{{p.category}}</p>
     <p class="price">${{p.price}}</p>
-    <a class="btn secondary" href="/shop/product/{{p.id}}">Открыть</a>
-    <a class="btn" href="/cart/add/{{p.id}}">В корзину</a>
+    <a class="btn secondary" href="/shop/product/{{p.id}}">View</a>
+    <a class="btn" href="/cart/add/{{p.id}}">Add to cart</a>
   </article>
   {% endfor %}
 </section>

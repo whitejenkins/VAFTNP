@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,14 +10,14 @@
   <div class="nav">
     <a class="brand" href="/">VulnShop</a>
     <div class="links">
-      <a href="/">Каталог</a>
-      <a href="/cart">Корзина <span class="badge">{{ cart_count|default(0) }}</span></a>
+      <a href="/">Catalog</a>
+      <a href="/cart">Cart <span class="badge">{{ cart_count|default(0) }}</span></a>
       {% if session.get('username') %}
-        <a href="/account/dashboard">Кабинет</a>
-        <a href="/auth/logout">Выйти</a>
+        <a href="/account/dashboard">Dashboard</a>
+        <a href="/auth/logout">Logout</a>
       {% else %}
-        <a href="/auth/login">Вход</a>
-        <a href="/auth/register">Регистрация</a>
+        <a href="/auth/login">Login</a>
+        <a href="/auth/register">Sign up</a>
       {% endif %}
     </div>
   </div>
