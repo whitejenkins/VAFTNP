@@ -1,0 +1,6 @@
+<!doctype html><html><body>
+<h1>VulnShop</h1>
+{% if user %}<p>Hello, {{ user }}</p>{% endif %}
+<ul>{% for p in products %}<li>{{p.name}} - ${{p.price}}</li>{% endfor %}</ul>
+<a href="/auth/login">Login</a> | <a href="/products/search?q=mouse">Search API</a>
+</body></html>
