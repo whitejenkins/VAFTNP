@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Регистрация - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:460px;margin:auto">
+  <h1>Регистрация</h1>
+  <form method="post">
+    <input name="username" placeholder="Логин">
+    <input name="email" placeholder="Email">
+    <input name="password" placeholder="Пароль" type="password">
+    <button class="btn">Создать аккаунт</button>
+  </form>
+</div>
+{% endblock %}

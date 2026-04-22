@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}2FA - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:460px;margin:auto">
+  <h1>Подтвердите вход</h1>
+  <form method="post"><input name="code" placeholder="2FA code"><button class="btn">Verify</button></form>
+</div>
+{% endblock %}
