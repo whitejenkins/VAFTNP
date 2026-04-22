@@ -72,10 +72,36 @@ def create_app():
 
     @app.route("/")
     def index():
+        q = request.args.get("q", "")
+        category = request.args.get("category", "")
         with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,name,price,category FROM products LIMIT 10")
+            sql = "SELECT id,name,description,price,category FROM products WHERE 1=1"
+            args = []
+            if q:
+                sql += " AND name LIKE %s"
+                args.append(f"%{q}%")
+            if category:
+                sql += " AND category=%s"
+                args.append(category)
+            sql += " ORDER BY id DESC LIMIT 30"
+            cur.execute(sql, tuple(args))
             products = cur.fetchall()
-        return render_template("index.html", products=products, user=session.get("username"))
+            cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
+            categories = [row["category"] for row in cur.fetchall()]
+        return render_template(
+            "index.html",
+            products=products,
+            categories=categories,
+            q=q,
+            selected_category=category,
+            user=session.get("username"),
+            cart_count=len(session.get("cart", [])),
+        )
+
+    @app.route("/auth/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("index"))
 
     @app.route("/auth/register", methods=["GET", "POST"])
     def register():
@@ -208,6 +234,64 @@ def create_app():
             cur.execute(f"SELECT * FROM orders WHERE user_id={uid}")
             orders = cur.fetchall()
         return render_template("dashboard.html", user=user, orders=orders)
+
+    @app.route("/shop/product/<int:pid>")
+    def product_card(pid):
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT * FROM products WHERE id=%s", (pid,))
+            product = cur.fetchone()
+            cur.execute("SELECT * FROM products ORDER BY RAND() LIMIT 4")
+            related = cur.fetchall()
+        if not product:
+            return "Product not found", 404
+        return render_template("product.html", product=product, related=related, cart_count=len(session.get("cart", [])))
+
+    @app.route("/cart")
+    def cart():
+        ids = session.get("cart", [])
+        items = []
+        subtotal = 0.0
+        if ids:
+            placeholders = ",".join(["%s"] * len(ids))
+            with mysql_conn().cursor() as cur:
+                cur.execute(f"SELECT id,name,price FROM products WHERE id IN ({placeholders})", tuple(ids))
+                items = cur.fetchall()
+            subtotal = sum(float(item["price"]) for item in items)
+        return render_template("cart.html", items=items, subtotal=subtotal, cart_count=len(ids))
+
+    @app.route("/cart/add/<int:pid>")
+    def cart_add(pid):
+        cart_items = session.setdefault("cart", [])
+        cart_items.append(pid)
+        session["cart"] = cart_items
+        return redirect(request.referrer or url_for("index"))
+
+    @app.route("/cart/remove/<int:pid>")
+    def cart_remove(pid):
+        cart_items = session.get("cart", [])
+        if pid in cart_items:
+            cart_items.remove(pid)
+        session["cart"] = cart_items
+        return redirect(url_for("cart"))
+
+    @app.route("/cart/checkout", methods=["POST"])
+    @login_required
+    def checkout():
+        ids = session.get("cart", [])
+        if not ids:
+            return redirect(url_for("cart"))
+        placeholders = ",".join(["%s"] * len(ids))
+        with mysql_conn().cursor() as cur:
+            cur.execute(f"SELECT id,price FROM products WHERE id IN ({placeholders})", tuple(ids))
+            products = cur.fetchall()
+            total = sum(float(p["price"]) for p in products)
+            for p in products:
+                cur.execute(
+                    "INSERT INTO orders (user_id,product_id,total,note) VALUES (%s,%s,%s,%s)",
+                    (session.get("user_id"), p["id"], total, "checkout order"),
+                )
+        session["cart"] = []
+        return redirect(url_for("dashboard"))
 
     @app.route("/account/promote", methods=["POST"])
     @login_required

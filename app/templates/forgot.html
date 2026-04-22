@@ -1,1 +1,7 @@
-<form method="post"><input name="username" placeholder="username"><button>Reset</button></form>
+{% extends 'base.html' %}
+{% block title %}Восстановление - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:460px;margin:auto">
+<form method="post"><input name="username" placeholder="username"><button class="btn">Reset</button></form>
+</div>
+{% endblock %}

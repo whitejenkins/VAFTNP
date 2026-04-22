@@ -1,5 +1,12 @@
-<h3>Upload avatar</h3>
+{% extends 'base.html' %}
+{% block title %}Upload - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:700px">
+<h3>Upload avatar / document</h3>
+<p class="muted">Клиентская валидация: попробуйте обойти</p>
 <input type="file" id="f" onchange="if(!this.value.endsWith('.jpg'))alert('jpg only')">
 <form method="post" enctype="multipart/form-data">
-<input type="file" name="file"><button>Upload</button>
+<input type="file" name="file"><button class="btn">Upload</button>
 </form>
+</div>
+{% endblock %}

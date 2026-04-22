@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}VulnShop{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="nav">
+    <a class="brand" href="/">VulnShop</a>
+    <div class="links">
+      <a href="/">Каталог</a>
+      <a href="/cart">Корзина <span class="badge">{{ cart_count|default(0) }}</span></a>
+      {% if session.get('username') %}
+        <a href="/account/dashboard">Кабинет</a>
+        <a href="/auth/logout">Выйти</a>
+      {% else %}
+        <a href="/auth/login">Вход</a>
+        <a href="/auth/register">Регистрация</a>
+      {% endif %}
+    </div>
+  </div>
+  <main class="container">{% block content %}{% endblock %}</main>
+  <div class="footer">VulnShop lab • realistic insecure e-commerce training app</div>
+</body>
+</html>

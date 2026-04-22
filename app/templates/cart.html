@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Корзина - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Корзина</h1>
+  {% if not items %}
+    <p class="muted">В корзине пока пусто.</p>
+  {% else %}
+    <table class="table">
+      <tr><th>Товар</th><th>Цена</th><th></th></tr>
+      {% for i in items %}
+        <tr>
+          <td>{{i.name}}</td>
+          <td>${{i.price}}</td>
+          <td><a class="btn danger" href="/cart/remove/{{i.id}}">Удалить</a></td>
+        </tr>
+      {% endfor %}
+    </table>
+    <p class="price">Итого: ${{"%.2f"|format(subtotal)}}</p>
+    <form method="post" action="/cart/checkout"><button class="btn">Оформить заказ</button></form>
+  {% endif %}
+</div>
+{% endblock %}
