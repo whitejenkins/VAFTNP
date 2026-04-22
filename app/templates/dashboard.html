@@ -1,0 +1,6 @@
+<h2>Dashboard</h2>
+<p>{{user.username}} ({{user.role}})</p>
+<ul>{% for o in orders %}<li>Order #{{o.id}} ${{o.total}}</li>{% endfor %}</ul>
+<form action="/account/promote" method="post">
+<input name="target_user_id" value="{{user.id}}"><input name="role" value="admin"><button>Promote</button>
+</form>
