@@ -12,8 +12,10 @@ services:
       - MONGO_URL=mongodb://mongo:27017
       - ADMIN_OTP=SUPER-ADMIN-OTP
     depends_on:
-      - mysql
-      - mongo
+      mysql:
+        condition: service_healthy
+      mongo:
+        condition: service_started
     volumes:
       - ./app:/app/app
 
@@ -28,6 +30,11 @@ services:
       - "3307:3306"
     volumes:
       - ./mysql-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   mongo:
     image: mongo:7

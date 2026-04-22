@@ -12,6 +12,8 @@ docker compose up --build
 ```
 Сервис будет на `http://localhost:8000`.
 
+Если видите ошибку подключения к MySQL с `caching_sha2_password`, убедитесь, что образ `web` пересобран с актуальным `requirements.txt` (в проект добавлен пакет `cryptography`).
+
 ## Архитектура
 - `web` — Flask приложение.
 - `mysql` — основная SQL БД.
