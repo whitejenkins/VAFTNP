@@ -1,0 +1,5 @@
+<h3>Upload avatar</h3>
+<input type="file" id="f" onchange="if(!this.value.endsWith('.jpg'))alert('jpg only')">
+<form method="post" enctype="multipart/form-data">
+<input type="file" name="file"><button>Upload</button>
+</form>
