@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Login - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:460px;margin:auto">
+  <h1>Login</h1>
+  <form method="post" id="login-form">
+    <input id="username" name="username" placeholder="Username" autocomplete="username">
+    <input name="password" placeholder="Password" type="password" autocomplete="current-password">
+
+    <div id="admin-otp-wrap" style="display:none">
+      <input id="admin-otp" name="admin_otp" placeholder="Admin OTP" autocomplete="one-time-code">
+    </div>
+
+    <button class="btn">Sign in</button>
+  </form>
+  <a href="/auth/forgot">Forgot password?</a>
+</div>
+<script>
+  const usernameInput = document.getElementById('username');
+  const otpWrap = document.getElementById('admin-otp-wrap');
+  usernameInput.addEventListener('input', () => {
+    const u = usernameInput.value.trim().toLowerCase();
+    otpWrap.style.display = (u === 'admin' || u.endsWith('_admin')) ? 'block' : 'none';
+  });
+</script>
+{% endblock %}
