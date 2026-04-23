@@ -74,3 +74,7 @@ docker compose up --build
 - `admin / admin123`
 - `alice / alice123`
 - `bob / bob123`
+
+## CTF flags
+- В БД (`attack_flags`) оставлен только один флаг для SQL Injection: `sqli_inband`.
+- В коде есть один «забытый разработчиком» комментарий с флагом на случайном endpoint.
