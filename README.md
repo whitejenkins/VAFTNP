@@ -50,7 +50,7 @@ docker compose up --build
 ### Auth/Session уязвимости
 - Enumeration users: разные ответы в `/auth/login`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
-- Weak rate limiting: минимальный in-memory счетчик
+- No rate limiting: ограничения по частоте запросов на логине отсутствуют
 - Default credentials: `admin/admin123`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
@@ -60,7 +60,7 @@ docker compose up --build
 - Privilege escalation: `POST /account/promote`
 
 ### Где есть защита (намеренно не всё уязвимо)
-- Для `admin` входа добавлена отдельная защита от простого перебора: дополнительный `admin_otp` и lockout после неудачных попыток.
+- Для `admin` входа остался дополнительный фактор `admin_otp`, но ограничений частоты входа нет.
 
 ### File handling
 - File upload bypasses: `POST /files/upload` (client-side checks, weak black/white/type filters)

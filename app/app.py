@@ -32,34 +32,8 @@ def create_app():
             {"product": "Coffee Mug", "author": "bob", "rating": 3, "text": "ok"},
         ])
 
-    brute_tracker = {}
-    admin_guard = {}
-
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
-
-    def check_admin_bruteforce(username):
-        state = admin_guard.setdefault(username, {"count": 0, "first": time.time(), "locked_until": 0})
-        now = time.time()
-        if state["locked_until"] > now:
-            return False, int(state["locked_until"] - now)
-        if now - state["first"] > 600:
-            state["count"] = 0
-            state["first"] = now
-        return True, 0
-
-    def register_admin_failure(username):
-        state = admin_guard.setdefault(username, {"count": 0, "first": time.time(), "locked_until": 0})
-        now = time.time()
-        if now - state["first"] > 600:
-            state["count"] = 0
-            state["first"] = now
-        state["count"] += 1
-        if state["count"] >= 3:
-            state["locked_until"] = now + 1800
-
-    def reset_admin_failures(username):
-        admin_guard[username] = {"count": 0, "first": time.time(), "locked_until": 0}
 
     def login_required(fn):
         @wraps(fn)
@@ -118,14 +92,6 @@ def create_app():
 
     @app.route("/auth/login", methods=["GET", "POST", "PUT"])
     def login():
-        ip = request.remote_addr or "unknown"
-        brute_tracker.setdefault(ip, {"count": 0, "last": time.time()})
-        if time.time() - brute_tracker[ip]["last"] > 25:
-            brute_tracker[ip]["count"] = 0
-        if brute_tracker[ip]["count"] > 30:
-            flash("Too many attempts. Please wait 10 seconds and try again.", "error")
-            return render_template("login.html", cart_count=len(session.get("cart", []))), 429
-
         if request.method == "PUT":
             username = request.args.get("username")
             with mysql_conn().cursor() as cur:
@@ -138,8 +104,6 @@ def create_app():
         if request.method == "POST":
             username = request.form.get("username", "")
             password = request.form.get("password", "")
-            brute_tracker[ip]["count"] += 1
-            brute_tracker[ip]["last"] = time.time()
             with mysql_conn().cursor() as cur:
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
@@ -147,22 +111,13 @@ def create_app():
                 flash("User does not exist.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 404
             if user["role"] == "admin":
-                allowed, wait_for = check_admin_bruteforce(username)
-                if not allowed:
-                    flash(f"Admin login is temporarily locked. Retry in {wait_for} seconds.", "error")
-                    return render_template("login.html", cart_count=len(session.get("cart", []))), 429
                 admin_otp = request.form.get("admin_otp", "")
                 if admin_otp != os.getenv("ADMIN_OTP", "A9-KNOWN-ONLY-TO-TEAM"):
-                    register_admin_failure(username)
                     flash("Admin OTP is invalid.", "error")
                     return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if user["password"] != password:
-                if user["role"] == "admin":
-                    register_admin_failure(username)
                 flash("Wrong password.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 401
-            if user["role"] == "admin":
-                reset_admin_failures(username)
             session["pre_2fa_user"] = user["id"]
             return redirect(url_for("verify_2fa"))
         return render_template("login.html", cart_count=len(session.get("cart", [])))
