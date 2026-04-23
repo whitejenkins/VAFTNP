@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import pymysql
 import requests
-from flask import Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
 
@@ -123,7 +123,8 @@ def create_app():
         if time.time() - brute_tracker[ip]["last"] > 25:
             brute_tracker[ip]["count"] = 0
         if brute_tracker[ip]["count"] > 30:
-            return "Too many tries, wait 10 sec", 429
+            flash("Too many attempts. Please wait 10 seconds and try again.", "error")
+            return render_template("login.html", cart_count=len(session.get("cart", []))), 429
 
         if request.method == "PUT":
             username = request.args.get("username")
@@ -143,24 +144,28 @@ def create_app():
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
             if not user:
-                return "User does not exist", 404
+                flash("User does not exist.", "error")
+                return render_template("login.html", cart_count=len(session.get("cart", []))), 404
             if user["role"] == "admin":
                 allowed, wait_for = check_admin_bruteforce(username)
                 if not allowed:
-                    return f"Admin login temporarily locked. Retry in {wait_for} sec", 429
+                    flash(f"Admin login is temporarily locked. Retry in {wait_for} seconds.", "error")
+                    return render_template("login.html", cart_count=len(session.get("cart", []))), 429
                 admin_otp = request.form.get("admin_otp", "")
                 if admin_otp != os.getenv("ADMIN_OTP", "A9-KNOWN-ONLY-TO-TEAM"):
                     register_admin_failure(username)
-                    return "Admin second factor failed", 401
+                    flash("Admin OTP is invalid.", "error")
+                    return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if user["password"] != password:
                 if user["role"] == "admin":
                     register_admin_failure(username)
-                return "Wrong password", 401
+                flash("Wrong password.", "error")
+                return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if user["role"] == "admin":
                 reset_admin_failures(username)
             session["pre_2fa_user"] = user["id"]
             return redirect(url_for("verify_2fa"))
-        return render_template("login.html")
+        return render_template("login.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/2fa", methods=["GET", "POST"])
     def verify_2fa():
@@ -180,7 +185,8 @@ def create_app():
                 session["active"] = True
                 session.pop("pre_2fa_user", None)
                 return redirect(url_for("admin_php"))
-            return "Invalid 2FA", 401
+            flash("Invalid 2FA code.", "error")
+            return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
 
         return render_template("twofa.html")
 
@@ -207,12 +213,13 @@ def create_app():
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
                 if not user:
-                    return "No such user", 404
+                    flash("Account was not found.", "error")
+                    return render_template("forgot.html", cart_count=len(session.get("cart", []))), 404
                 token = f"{user['id']}{int(time.time())}"
                 cur.execute(f"UPDATE users SET reset_token='{token}' WHERE id={user['id']}")
             reset_link = f"http://{request.host}/auth/reset?token={token}"
-            return f"Reset link sent: {reset_link}"
-        return render_template("forgot.html")
+            return render_template("notice.html", title="Password reset link generated", message=reset_link, kind="success")
+        return render_template("forgot.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/reset", methods=["GET", "POST"])
     def reset_password():
@@ -221,8 +228,8 @@ def create_app():
             new_password = request.form.get("password", "")
             with mysql_conn().cursor() as cur:
                 cur.execute(f"UPDATE users SET password='{new_password}' WHERE reset_token='{token}'")
-            return "Password updated"
-        return render_template("reset.html", token=token)
+            return render_template("notice.html", title="Password updated", message="You can now login with your new password.", kind="success")
+        return render_template("reset.html", token=token, cart_count=len(session.get("cart", [])))
 
     @app.route("/account/dashboard")
     @login_required
