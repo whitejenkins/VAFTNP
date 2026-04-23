@@ -26,12 +26,6 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS attack_flags (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  attack_key VARCHAR(100) UNIQUE,
-  flag_value VARCHAR(120)
-);
-
 INSERT INTO users (username,email,password,role,twofa_secret,bio) VALUES
 ('admin','admin@shop.local','admin123','admin','111111','I am admin'),
 ('alice','alice@shop.local','alice123','user','222222','hello'),
@@ -48,7 +42,3 @@ INSERT INTO orders (user_id,product_id,total,note) VALUES
 (2,1,49.90,'first order'),
 (2,3,12.50,'gift'),
 (3,2,89.00,'office setup');
-
-INSERT INTO attack_flags (attack_key,flag_value) VALUES
-('sqli_inband','DIGITAL[9f2a1c43]')
-ON DUPLICATE KEY UPDATE flag_value=VALUES(flag_value);

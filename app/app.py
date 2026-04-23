@@ -25,34 +25,6 @@ def create_app():
     }
 
     mongo = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
-    # CTF flags by attack family.
-    attack_flags = {
-        "sqli_inband": "DIGITAL[9f2a1c43]",
-        "sqli_blind_boolean": "DIGITAL[11d7e5aa]",
-        "sqli_time": "DIGITAL[c4bb8a12]",
-        "sqli_second_order": "DIGITAL[3a8fe91c]",
-        "sqli_oob": "DIGITAL[e7f90b54]",
-        "nosqli": "DIGITAL[55ab2fd0]",
-        "command_injection": "DIGITAL[91a6de33]",
-        "code_injection": "DIGITAL[7ed4bc90]",
-        "host_header_injection": "DIGITAL[dc6602a1]",
-        "xxe": "DIGITAL[a2f8ce71]",
-        "ssti": "DIGITAL[8be1d045]",
-        "auth_enumeration": "DIGITAL[4c30fb92]",
-        "auth_bruteforce": "DIGITAL[6d271ea8]",
-        "auth_forgot_bruteforce": "DIGITAL[2e9f4ab1]",
-        "auth_2fa_bruteforce": "DIGITAL[b9d8cc40]",
-        "default_credentials": "DIGITAL[f3aa0159]",
-        "http_verb_tamper": "DIGITAL[cb82d7f6]",
-        "idor": "DIGITAL[3d19a60f]",
-        "bypass_2fa_direct": "DIGITAL[d7a3fb22]",
-        "bypass_auth_direct": "DIGITAL[67be20c8]",
-        "privesc": "DIGITAL[154e8bd2]",
-        "upload_bypass": "DIGITAL[8a4b1ff7]",
-        "lfi": "DIGITAL[c6f59103]",
-        "rfi": "DIGITAL[2bb7de6e]",
-        "path_traversal": "DIGITAL[e0a1c4d8]",
-    }
     reviews = mongo.vulnshop.reviews
     if reviews.count_documents({}) == 0:
         reviews.insert_many([
@@ -62,9 +34,6 @@ def create_app():
 
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
-
-    def flag(key):
-        return attack_flags.get(key, "DIGITAL[missing]")
 
     def login_required(fn):
         @wraps(fn)
@@ -130,7 +99,7 @@ def create_app():
                 user = cur.fetchone()
             if user:
                 session["pre_2fa_user"] = user["id"]
-                return jsonify({"message": "PUT login accepted", "flag": flag("http_verb_tamper")})
+                return jsonify({"message": "PUT login accepted"})
 
         if request.method == "POST":
             username = request.form.get("username", "")
@@ -139,18 +108,18 @@ def create_app():
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
             if not user:
-                flash(f"User does not exist. {flag('auth_enumeration')}", "error")
+                flash("User does not exist.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 404
             if user["role"] == "admin":
                 admin_otp = request.form.get("admin_otp", "")
                 if admin_otp != os.getenv("ADMIN_OTP", "A9-KNOWN-ONLY-TO-TEAM"):
-                    flash(f"Admin OTP is invalid. {flag('auth_bruteforce')}", "error")
+                    flash("Admin OTP is invalid.", "error")
                     return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if user["password"] != password:
-                flash(f"Wrong password. {flag('auth_bruteforce')}", "error")
+                flash("Wrong password.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if username == "admin" and password == "admin123":
-                flash(f"Default credentials used: {flag('default_credentials')}", "info")
+                flash("Default credentials used.", "info")
             session["pre_2fa_user"] = user["id"]
             return redirect(url_for("verify_2fa"))
         return render_template("login.html", cart_count=len(session.get("cart", [])))
@@ -173,7 +142,7 @@ def create_app():
                 session["active"] = True
                 session.pop("pre_2fa_user", None)
                 return redirect(url_for("admin_php"))
-            flash(f"Invalid 2FA code. {flag('auth_2fa_bruteforce')}", "error")
+            flash("Invalid 2FA code.", "error")
             return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
 
         return render_template("twofa.html")
@@ -188,8 +157,7 @@ def create_app():
 
         body = render_template("admin.html", users=users, orders=orders)
         if not session.get("active"):
-            flagged_body = body + f"<!-- {flag('bypass_auth_direct')} | {flag('bypass_2fa_direct')} -->"
-            resp = app.response_class(flagged_body, status=302, mimetype="text/html")
+            resp = app.response_class(body, status=302, mimetype="text/html")
             resp.headers["Location"] = url_for("login")
             return resp
         return body
@@ -202,12 +170,15 @@ def create_app():
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
                 if not user:
-                    flash(f"Account was not found. {flag('auth_forgot_bruteforce')}", "error")
+                    flash("Account was not found.", "error")
                     return render_template("forgot.html", cart_count=len(session.get("cart", []))), 404
                 token = f"{user['id']}{int(time.time())}"
                 cur.execute(f"UPDATE users SET reset_token='{token}' WHERE id={user['id']}")
             reset_link = f"http://{request.host}/auth/reset?token={token}"
-            msg = f"{reset_link} | {flag('host_header_injection')} | {flag('auth_forgot_bruteforce')}"
+            injected_host = not any(x in request.host.lower() for x in ["localhost", "127.0.0.1", "vulnshop", "web"])
+            msg = reset_link
+            if injected_host:
+                msg += " | host-header-modified"
             return render_template("notice.html", title="Password reset link generated", message=msg, kind="success")
         return render_template("forgot.html", cart_count=len(session.get("cart", [])))
 
@@ -297,7 +268,9 @@ def create_app():
         new_role = request.form.get("role", "admin")
         with mysql_conn().cursor() as cur:
             cur.execute(f"UPDATE users SET role='{new_role}' WHERE id={target}")
-        return f"Role updated. {flag('privesc')}"
+        exploited = str(target) != str(session.get("user_id")) or new_role == "admin"
+        suffix = " (role escalation pattern detected)" if exploited else ""
+        return f"Role updated.{suffix}"
 
     @app.route("/orders/<order_id>")
     @login_required
@@ -306,7 +279,7 @@ def create_app():
             cur.execute(f"SELECT * FROM orders WHERE id={order_id}")
             row = cur.fetchone()
         payload = row or {}
-        payload["flag"] = flag("idor")
+        payload["idor_pattern"] = bool(row and row.get("user_id") != session.get("user_id"))
         return jsonify(payload)
 
     @app.route("/products/search")
@@ -316,8 +289,8 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute(sql)
             rows = cur.fetchall()
-        exposed_flag = flag("sqli_inband") if any(t in q.lower() for t in ["'", " union ", "select", "--"]) else ""
-        return jsonify({"query": sql, "results": rows, "flag": exposed_flag})
+        suspicious = any(t in q.lower() for t in ["'", " union ", "select", "--"])
+        return jsonify({"query": sql, "results": rows, "sqli_pattern": suspicious})
 
     @app.route("/products/<pid>")
     def product_by_id(pid):
@@ -332,7 +305,8 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT IF(({pid})>0, 'in-stock', 'out') AS status")
             row = cur.fetchone()
-        return jsonify({"status": row.get("status"), "flag": flag("sqli_blind_boolean")})
+        is_exploit = not pid.isdigit()
+        return jsonify({"status": row.get("status"), "sqli_pattern": is_exploit})
 
     @app.route("/api/shipping")
     def shipping_quote():
@@ -340,7 +314,8 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT IF({postal}=10000, SLEEP(0), SLEEP(2)) AS delayed")
             cur.fetchone()
-        return jsonify({"quote": 14.99, "flag": flag("sqli_time")})
+        is_exploit = not postal.isdigit()
+        return jsonify({"quote": 14.99, "sqli_pattern": is_exploit})
 
     @app.route("/admin/reports")
     def admin_reports():
@@ -352,7 +327,8 @@ def create_app():
             query = f"SELECT * FROM orders WHERE note LIKE '%{snippet}%'"
             cur.execute(query)
             rows = cur.fetchall()
-        return jsonify({"second_order_query": query, "orders": rows, "flag": flag("sqli_second_order")})
+        exposed = any(x in snippet.lower() for x in ["'", "select", "union", "--"])
+        return jsonify({"second_order_query": query, "orders": rows, "sqli_pattern": exposed})
 
     @app.route("/api/reviews/search", methods=["POST"])
     def nosql_search():
@@ -361,33 +337,40 @@ def create_app():
         author = payload.get("author")
         query = {"product": product, "author": author}
         data = list(reviews.find(query, {"_id": 0}))
-        return jsonify({"results": data, "flag": flag("nosqli")})
+        injected = any(isinstance(v, dict) for v in [product, author])
+        return jsonify({"results": data, "nosqli_pattern": injected})
 
     @app.route("/tools/ping")
     def ping_host():
         host = request.args.get("host", "127.0.0.1")
         out = subprocess.getoutput(f"ping -c 1 {host}")
-        return f"<pre>{out}</pre><!-- {flag('command_injection')} -->"
+        injected = any(token in host for token in [";", "|", "&", "`", "$("])
+        suffix = "<!-- cmdi-pattern -->" if injected else ""
+        return f"<pre>{out}</pre>{suffix}"
 
     @app.route("/admin/eval", methods=["POST"])
     def eval_code():
         expr = request.form.get("expr", "1+1")
         result = eval(expr)
-        return jsonify({"result": str(result), "flag": flag("code_injection")})
+        injected = any(token in expr for token in ["__import__", "os.", "subprocess", "open(", "__"])
+        return jsonify({"result": str(result), "code_injection_pattern": injected})
 
     @app.route("/promo/preview", methods=["GET", "POST"])
     def promo_preview():
         tpl = request.values.get("tpl", "<h2>Promo for {{user}}</h2>")
         user = request.values.get("user", "guest")
         html = render_template_string(tpl, user=user, session=session)
-        return html + f"<!-- {flag('ssti')} -->"
+        injected = any(token in tpl.lower() for token in ["__class__", "config", "cycler", "self", "mro"])
+        return html + ("<!-- ssti-pattern -->" if injected else "")
 
     @app.route("/api/import-xml", methods=["POST"])
     def import_xml():
         raw = request.data or b""
         parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
         root = etree.fromstring(raw, parser=parser)
-        return jsonify({"root": root.tag, "text": root.text, "flag": flag("xxe")})
+        raw_low = raw.decode("utf-8", errors="ignore").lower()
+        injected = "<!doctype" in raw_low or "<!entity" in raw_low
+        return jsonify({"root": root.tag, "text": root.text, "xxe_pattern": injected})
 
     @app.route("/files/upload", methods=["GET", "POST"])
     @login_required
@@ -406,7 +389,8 @@ def create_app():
             f.stream.seek(0)
             save_path = os.path.join("app/static/uploads", filename)
             f.save(save_path)
-            return f"uploaded to /static/uploads/{filename} | {flag('upload_bypass')}"
+            suspicious = any(x in filename.lower() for x in [".php5", ".phtml", "..", ".jpg.php"])
+            return f"uploaded to /static/uploads/{filename}" + (" | upload-bypass-pattern" if suspicious else "")
         return render_template("upload.html")
 
     @app.route("/pages")
@@ -417,20 +401,20 @@ def create_app():
             with open(path, "r", encoding="utf-8") as f:
                 data = f.read()
                 if "../" in page:
-                    data += f"<!-- {flag('path_traversal')} | {flag('lfi')} -->"
+                    data += "<!-- traversal-pattern -->"
                 return data
         except FileNotFoundError:
             return "not found", 404
 
     @app.route("/remote/include")
     def remote_include():
-        # TODO(cleanup): remove test token before release DIGITAL[2bb7de6e]
         url = request.args.get("url", "https://example.com")
         parsed = urlparse(url)
         if parsed.scheme not in ["http", "https"]:
             return "bad scheme", 400
         content = requests.get(url, timeout=3).text
-        return render_template_string(content) + f"<!-- {flag('rfi')} -->"
+        injected = "example.com" not in parsed.netloc
+        return render_template_string(content) + ("<!-- rfi-pattern -->" if injected else "")
 
     @app.route("/safe/products")
     def safe_products():
