@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(200) UNIQUE,
   password VARCHAR(200),
   role VARCHAR(20) DEFAULT 'user',
-  twofa_secret VARCHAR(10) DEFAULT '000000',
+  twofa_secret VARCHAR(10) DEFAULT NULL,
   reset_token VARCHAR(100),
   bio TEXT
 );

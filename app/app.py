@@ -110,18 +110,20 @@ def create_app():
             if not user:
                 flash("User does not exist.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 404
-            if user["role"] == "admin":
-                admin_otp = request.form.get("admin_otp", "")
-                if admin_otp != os.getenv("ADMIN_OTP", "A9-KNOWN-ONLY-TO-TEAM"):
-                    flash("Admin OTP is invalid.", "error")
-                    return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if user["password"] != password:
                 flash("Wrong password.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 401
             if username == "admin" and password == "admin123":
                 flash("Default credentials used.", "info")
-            session["pre_2fa_user"] = user["id"]
-            return redirect(url_for("verify_2fa"))
+            user_otp = (user.get("twofa_secret") or "").strip()
+            if user_otp:
+                session["pre_2fa_user"] = user["id"]
+                return redirect(url_for("verify_2fa"))
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["active"] = True
+            return redirect(url_for("dashboard"))
         return render_template("login.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/2fa", methods=["GET", "POST"])
