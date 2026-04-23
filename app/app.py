@@ -123,7 +123,6 @@ def create_app():
 
     @app.route("/auth/login", methods=["GET", "POST", "PUT"])
     def login():
-        # FLAG: HTTP verb tampering.
         if request.method == "PUT":
             username = request.args.get("username")
             with mysql_conn().cursor() as cur:
@@ -158,7 +157,6 @@ def create_app():
 
     @app.route("/auth/2fa", methods=["GET", "POST"])
     def verify_2fa():
-        # FLAG: Brute-forcing 2FA codes.
         uid = session.get("pre_2fa_user")
         if not uid:
             return redirect(url_for("login"))
@@ -182,7 +180,6 @@ def create_app():
 
     @app.route("/admin.php")
     def admin_php():
-        # FLAG: direct access + response replacement bypasses.
         with mysql_conn().cursor() as cur:
             cur.execute("SELECT id,username,email,role FROM users ORDER BY id")
             users = cur.fetchall()
@@ -199,7 +196,6 @@ def create_app():
 
     @app.route("/auth/forgot", methods=["GET", "POST"])
     def forgot_password():
-        # FLAG: Host header injection + forgot bruteforce.
         if request.method == "POST":
             username = request.form.get("username", "")
             with mysql_conn().cursor() as cur:
@@ -297,7 +293,6 @@ def create_app():
     @app.route("/account/promote", methods=["POST"])
     @login_required
     def promote():
-        # FLAG: Privilege escalation.
         target = request.form.get("target_user_id", session.get("user_id"))
         new_role = request.form.get("role", "admin")
         with mysql_conn().cursor() as cur:
@@ -307,7 +302,6 @@ def create_app():
     @app.route("/orders/<order_id>")
     @login_required
     def order_view(order_id):
-        # FLAG: IDOR.
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT * FROM orders WHERE id={order_id}")
             row = cur.fetchone()
@@ -317,7 +311,6 @@ def create_app():
 
     @app.route("/products/search")
     def products_search():
-        # FLAG: In-band SQLi.
         q = request.args.get("q", "")
         sql = f"SELECT id,name,description,price FROM products WHERE name LIKE '%{q}%'"
         with mysql_conn().cursor() as cur:
@@ -335,7 +328,6 @@ def create_app():
 
     @app.route("/api/stock")
     def stock_check():
-        # FLAG: Boolean-based blind SQLi.
         pid = request.args.get("id", "1")
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT IF(({pid})>0, 'in-stock', 'out') AS status")
@@ -344,7 +336,6 @@ def create_app():
 
     @app.route("/api/shipping")
     def shipping_quote():
-        # FLAG: Time-based SQLi.
         postal = request.args.get("zip", "10000")
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT IF({postal}=10000, SLEEP(0), SLEEP(2)) AS delayed")
@@ -353,7 +344,6 @@ def create_app():
 
     @app.route("/admin/reports")
     def admin_reports():
-        # FLAG: Second-order SQLi.
         username_filter = request.args.get("u", "")
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT bio FROM users WHERE username='{username_filter}'")
@@ -366,7 +356,6 @@ def create_app():
 
     @app.route("/api/reviews/search", methods=["POST"])
     def nosql_search():
-        # FLAG: NoSQL injection.
         payload = request.get_json(force=True, silent=True) or {}
         product = payload.get("product")
         author = payload.get("author")
@@ -376,21 +365,18 @@ def create_app():
 
     @app.route("/tools/ping")
     def ping_host():
-        # FLAG: Command injection.
         host = request.args.get("host", "127.0.0.1")
         out = subprocess.getoutput(f"ping -c 1 {host}")
         return f"<pre>{out}</pre><!-- {flag('command_injection')} -->"
 
     @app.route("/admin/eval", methods=["POST"])
     def eval_code():
-        # FLAG: Code injection.
         expr = request.form.get("expr", "1+1")
         result = eval(expr)
         return jsonify({"result": str(result), "flag": flag("code_injection")})
 
     @app.route("/promo/preview", methods=["GET", "POST"])
     def promo_preview():
-        # FLAG: SSTI.
         tpl = request.values.get("tpl", "<h2>Promo for {{user}}</h2>")
         user = request.values.get("user", "guest")
         html = render_template_string(tpl, user=user, session=session)
@@ -398,7 +384,6 @@ def create_app():
 
     @app.route("/api/import-xml", methods=["POST"])
     def import_xml():
-        # FLAG: XXE.
         raw = request.data or b""
         parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
         root = etree.fromstring(raw, parser=parser)
@@ -407,7 +392,6 @@ def create_app():
     @app.route("/files/upload", methods=["GET", "POST"])
     @login_required
     def upload_file():
-        # FLAG: File upload bypasses.
         if request.method == "POST":
             f = request.files.get("file")
             if not f:
@@ -427,7 +411,6 @@ def create_app():
 
     @app.route("/pages")
     def include_page():
-        # FLAG: LFI + Path traversal.
         page = request.args.get("page", "home.html")
         path = os.path.join("app/templates/pages", page)
         try:
@@ -441,7 +424,7 @@ def create_app():
 
     @app.route("/remote/include")
     def remote_include():
-        # FLAG: RFI.
+        # TODO(cleanup): remove test token before release DIGITAL[2bb7de6e]
         url = request.args.get("url", "https://example.com")
         parsed = urlparse(url)
         if parsed.scheme not in ["http", "https"]:

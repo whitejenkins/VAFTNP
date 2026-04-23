@@ -50,29 +50,5 @@ INSERT INTO orders (user_id,product_id,total,note) VALUES
 (3,2,89.00,'office setup');
 
 INSERT INTO attack_flags (attack_key,flag_value) VALUES
-('sqli_inband','DIGITAL[9f2a1c43]'),
-('sqli_blind_boolean','DIGITAL[11d7e5aa]'),
-('sqli_time','DIGITAL[c4bb8a12]'),
-('sqli_second_order','DIGITAL[3a8fe91c]'),
-('sqli_oob','DIGITAL[e7f90b54]'),
-('nosqli','DIGITAL[55ab2fd0]'),
-('command_injection','DIGITAL[91a6de33]'),
-('code_injection','DIGITAL[7ed4bc90]'),
-('host_header_injection','DIGITAL[dc6602a1]'),
-('xxe','DIGITAL[a2f8ce71]'),
-('ssti','DIGITAL[8be1d045]'),
-('auth_enumeration','DIGITAL[4c30fb92]'),
-('auth_bruteforce','DIGITAL[6d271ea8]'),
-('auth_forgot_bruteforce','DIGITAL[2e9f4ab1]'),
-('auth_2fa_bruteforce','DIGITAL[b9d8cc40]'),
-('default_credentials','DIGITAL[f3aa0159]'),
-('http_verb_tamper','DIGITAL[cb82d7f6]'),
-('idor','DIGITAL[3d19a60f]'),
-('bypass_2fa_direct','DIGITAL[d7a3fb22]'),
-('bypass_auth_direct','DIGITAL[67be20c8]'),
-('privesc','DIGITAL[154e8bd2]'),
-('upload_bypass','DIGITAL[8a4b1ff7]'),
-('lfi','DIGITAL[c6f59103]'),
-('rfi','DIGITAL[2bb7de6e]'),
-('path_traversal','DIGITAL[e0a1c4d8]')
+('sqli_inband','DIGITAL[9f2a1c43]')
 ON DUPLICATE KEY UPDATE flag_value=VALUES(flag_value);
