@@ -3,6 +3,7 @@ import time
 import subprocess
 import json
 import re
+import hashlib
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -49,6 +50,12 @@ def create_app():
 
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
+
+    def rolling_otp(seed, moment=None):
+        now = int(moment or time.time())
+        window = now // 600
+        digest = hashlib.sha256(f"{seed}:{window}:{app.secret_key}".encode()).hexdigest()
+        return f"{int(digest[:8], 16) % 10000:04d}"
 
     def password_policy_errors(password):
         issues = []
@@ -166,15 +173,19 @@ def create_app():
         if not uid:
             return redirect(url_for("login"))
 
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,username,role,twofa_secret FROM users WHERE id=%s", (uid,))
+            user = cur.fetchone()
+        otp_seed = (user.get("twofa_secret") or "").strip()
+        current_code = rolling_otp(otp_seed) if otp_seed else ""
+        previous_code = rolling_otp(otp_seed, int(time.time()) - 600) if otp_seed else ""
+
         if request.method == "POST":
             code = request.form.get("code", "").strip()
             if has_empty(code):
                 flash("2FA code is required.", "error")
-                return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
-            with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT id,username,role,twofa_secret FROM users WHERE id={uid}")
-                user = cur.fetchone()
-            if code == user["twofa_secret"] or len(code) == 4:
+                return render_template("twofa.html", cart_count=len(session.get("cart", [])), demo_code=current_code), 400
+            if code == current_code or code == previous_code:
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["role"] = user["role"]
@@ -182,9 +193,9 @@ def create_app():
                 session.pop("pre_2fa_user", None)
                 return redirect(url_for("admin_php"))
             flash("Invalid 2FA code.", "error")
-            return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
+            return render_template("twofa.html", cart_count=len(session.get("cart", [])), demo_code=current_code), 401
 
-        return render_template("twofa.html")
+        return render_template("twofa.html", cart_count=len(session.get("cart", [])), demo_code=current_code)
 
     @app.route("/admin.php")
     def admin_php():
