@@ -56,10 +56,8 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Default credentials: `alice/Hightower7`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
-- Bypass 2FA via direct access + response replacement: `GET /admin.php` возвращает `302`, но в теле уже есть защищенный контент
-- Bypass authentication via direct access + response replacement: тот же `GET /admin.php` (доступ к контенту при смене ответа с `302` на `200`)
 - IDOR: `GET /orders/<id>`
-- Privilege escalation: `POST /account/promote`
+- Privilege escalation: роль берётся из cookie `role` (base64), можно поднять права подменой `dXNlcg==` (`user`) -> `YWRtaW4=` (`admin`)
 
 ### Где есть защита (намеренно не всё уязвимо)
 - Для `admin` входа остался дополнительный фактор `admin_otp`, но ограничений частоты входа нет.

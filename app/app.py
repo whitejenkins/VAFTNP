@@ -4,6 +4,8 @@ import subprocess
 import json
 import re
 import hashlib
+import base64
+import binascii
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -44,6 +46,31 @@ def create_app():
         def wrapper(*args, **kwargs):
             if not session.get("user_id"):
                 return redirect(url_for("login"))
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    def encode_role_cookie(role):
+        return base64.b64encode((role or "user").encode()).decode()
+
+    def role_from_cookie():
+        raw = request.cookies.get("role", "")
+        if not raw:
+            return "user"
+        try:
+            decoded = base64.b64decode(raw.encode(), validate=True).decode().strip().lower()
+        except (ValueError, binascii.Error, UnicodeDecodeError):
+            return "user"
+        return decoded if decoded in {"user", "admin"} else "user"
+
+    def admin_required(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if not session.get("user_id") or not session.get("active"):
+                return redirect(url_for("login"))
+            if role_from_cookie() != "admin":
+                flash("Admin access required.", "error")
+                return redirect(url_for("dashboard")), 403
             return fn(*args, **kwargs)
 
         return wrapper
@@ -100,7 +127,9 @@ def create_app():
     @app.route("/auth/logout")
     def logout():
         session.clear()
-        return redirect(url_for("index"))
+        resp = redirect(url_for("index"))
+        resp.delete_cookie("role")
+        return resp
 
     @app.route("/auth/register", methods=["GET", "POST"])
     def register():
@@ -164,7 +193,9 @@ def create_app():
             session["username"] = user["username"]
             session["role"] = user["role"]
             session["active"] = True
-            return redirect(url_for("dashboard"))
+            resp = redirect(url_for("dashboard"))
+            resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
+            return resp
         return render_template("login.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/2fa", methods=["GET", "POST"])
@@ -194,26 +225,23 @@ def create_app():
                 session["role"] = user["role"]
                 session["active"] = True
                 session.pop("pre_2fa_user", None)
-                return redirect(url_for("admin_php"))
+                resp = redirect(url_for("admin_php"))
+                resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
+                return resp
             flash("Invalid 2FA code.", "error")
             return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
 
         return render_template("twofa.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/admin.php")
+    @admin_required
     def admin_php():
         with mysql_conn().cursor() as cur:
             cur.execute("SELECT id,username,email,role FROM users ORDER BY id")
             users = cur.fetchall()
             cur.execute("SELECT id,user_id,total,created_at FROM orders ORDER BY id DESC LIMIT 20")
             orders = cur.fetchall()
-
-        body = render_template("admin.html", users=users, orders=orders)
-        if not session.get("active"):
-            resp = app.response_class(body, status=302, mimetype="text/html")
-            resp.headers["Location"] = url_for("login")
-            return resp
-        return body
+        return render_template("admin.html", users=users, orders=orders, cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/forgot", methods=["GET", "POST"])
     def forgot_password():
@@ -266,6 +294,7 @@ def create_app():
                 (uid,),
             )
             wishlist_items = cur.fetchall()
+        user["role"] = role_from_cookie()
         return render_template("dashboard.html", user=user, orders=orders, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
 
     @app.route("/account/profile", methods=["GET", "POST"])
@@ -372,17 +401,6 @@ def create_app():
         session["cart"] = []
         return redirect(url_for("dashboard"))
 
-    @app.route("/account/promote", methods=["POST"])
-    @login_required
-    def promote():
-        target = request.form.get("target_user_id", session.get("user_id"))
-        new_role = request.form.get("role", "admin")
-        with mysql_conn().cursor() as cur:
-            cur.execute(f"UPDATE users SET role='{new_role}' WHERE id={target}")
-        exploited = str(target) != str(session.get("user_id")) or new_role == "admin"
-        suffix = " (role escalation pattern detected)" if exploited else ""
-        return f"Role updated.{suffix}"
-
     @app.route("/orders/<order_id>")
     @login_required
     def order_view(order_id):
@@ -450,6 +468,7 @@ def create_app():
         return jsonify({"quote": 14.99, "sqli_pattern": is_exploit})
 
     @app.route("/admin/reports")
+    @admin_required
     def admin_reports():
         username_filter = request.args.get("u", "")
         with mysql_conn().cursor() as cur:
@@ -481,6 +500,7 @@ def create_app():
         return f"<pre>{out}</pre>{suffix}"
 
     @app.route("/admin/eval", methods=["POST"])
+    @admin_required
     def eval_code():
         expr = request.form.get("expr", "1+1")
         result = eval(expr)
