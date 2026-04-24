@@ -46,6 +46,9 @@ def create_app():
 
         return wrapper
 
+    def has_empty(*values):
+        return any(not (v or "").strip() for v in values)
+
     @app.route("/")
     def index():
         q = request.args.get("q", "")
@@ -82,9 +85,12 @@ def create_app():
     @app.route("/auth/register", methods=["GET", "POST"])
     def register():
         if request.method == "POST":
-            username = request.form.get("username", "")
-            email = request.form.get("email", "")
-            password = request.form.get("password", "")
+            username = request.form.get("username", "").strip()
+            email = request.form.get("email", "").strip()
+            password = request.form.get("password", "").strip()
+            if has_empty(username, email, password):
+                flash("All registration fields are required.", "error")
+                return render_template("register.html", cart_count=len(session.get("cart", []))), 400
             try:
                 with mysql_conn().cursor() as cur:
                     cur.execute(
@@ -110,8 +116,11 @@ def create_app():
                 return jsonify({"message": "PUT login accepted"})
 
         if request.method == "POST":
-            username = request.form.get("username", "")
-            password = request.form.get("password", "")
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "").strip()
+            if has_empty(username, password):
+                flash("Username and password are required.", "error")
+                return render_template("login.html", cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
@@ -141,7 +150,10 @@ def create_app():
             return redirect(url_for("login"))
 
         if request.method == "POST":
-            code = request.form.get("code", "")
+            code = request.form.get("code", "").strip()
+            if has_empty(code):
+                flash("2FA code is required.", "error")
+                return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute(f"SELECT id,username,role,twofa_secret FROM users WHERE id={uid}")
                 user = cur.fetchone()
@@ -176,6 +188,9 @@ def create_app():
     def forgot_password():
         if request.method == "POST":
             username = request.form.get("username", "").strip()
+            if has_empty(username):
+                flash("Username is required.", "error")
+                return render_template("forgot.html", cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
@@ -193,7 +208,10 @@ def create_app():
     def reset_password():
         token = request.args.get("token", "")
         if request.method == "POST":
-            new_password = request.form.get("password", "")
+            new_password = request.form.get("password", "").strip()
+            if has_empty(new_password):
+                flash("Password is required.", "error")
+                return render_template("reset.html", token=token, cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute(f"UPDATE users SET password='{new_password}' WHERE reset_token='{token}'")
             return render_template("notice.html", title="Password updated", message="You can now login with your new password.", kind="success")
@@ -220,8 +238,11 @@ def create_app():
     def profile():
         uid = session.get("user_id")
         if request.method == "POST":
-            email = request.form.get("email", "")
-            bio = request.form.get("bio", "")
+            email = request.form.get("email", "").strip()
+            bio = request.form.get("bio", "").strip()
+            if has_empty(email):
+                flash("Email is required.", "error")
+                return render_template("profile.html", user={"email": email, "bio": bio}, cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute("UPDATE users SET email=%s,bio=%s WHERE id=%s", (email, bio, uid))
             flash("Profile updated.", "success")
@@ -342,8 +363,11 @@ def create_app():
     def support():
         uid = session.get("user_id")
         if request.method == "POST":
-            subject = request.form.get("subject", "")
-            message = request.form.get("message", "")
+            subject = request.form.get("subject", "").strip()
+            message = request.form.get("message", "").strip()
+            if has_empty(subject, message):
+                flash("Subject and message are required.", "error")
+                return render_template("support.html", tickets=[], cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute(
                     "INSERT INTO support_tickets (user_id,subject,message) VALUES (%s,%s,%s)",

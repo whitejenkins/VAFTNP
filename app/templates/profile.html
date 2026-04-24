@@ -5,7 +5,7 @@
   <h1>Profile settings</h1>
   <form method="post">
     <label>Email</label>
-    <input name="email" value="{{ user.email }}">
+    <input name="email" value="{{ user.email }}" type="email" required>
     <label>Bio</label>
     <input name="bio" value="{{ user.bio or '' }}">
     <button class="btn">Save changes</button>
