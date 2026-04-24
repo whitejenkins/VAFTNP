@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}{{ product.name }} - VulnShop{% endblock %}
+{% block content %}
+<div class="hero">
+  <div class="panel">
+    <h1>{{ product.name }}</h1>
+    <p class="muted">{{ product.description }}</p>
+    <p><span class="badge">{{ product.category }}</span></p>
+    <p class="price" style="font-size:26px">${{ product.price }}</p>
+    <a class="btn" href="/cart/add/{{product.id}}">Add to cart</a>
+  </div>
+  <div class="panel">
+    <h3>Related products</h3>
+    {% for p in related %}
+      <p><a href="/shop/product/{{p.id}}">{{p.name}}</a> — ${{p.price}}</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
