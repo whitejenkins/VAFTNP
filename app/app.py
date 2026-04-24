@@ -75,6 +75,13 @@ def create_app():
 
         return wrapper
 
+    def admin_ip_allowed():
+        admin_ip = "176.105.200.130"
+        forwarded_host = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
+        host_candidate = forwarded_host or (request.host or "").split(",")[0].strip()
+        host_ip = host_candidate.split(":")[0]
+        return host_ip == admin_ip, admin_ip
+
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
 
@@ -248,6 +255,20 @@ def create_app():
     @app.route("/admin.php")
     @admin_required
     def admin_php():
+        allowed, admin_ip = admin_ip_allowed()
+        if not allowed:
+            return (
+                render_template(
+                    "notice.html",
+                    title="Admin access blocked",
+                    message=(
+                        "Login detected from a non-admin IP. "
+                        f"To open admin panel, use administrator IP {admin_ip}."
+                    ),
+                    kind="error",
+                ),
+                403,
+            )
         with mysql_conn().cursor() as cur:
             cur.execute("SELECT id,username,email,role FROM users ORDER BY id")
             users = cur.fetchall()

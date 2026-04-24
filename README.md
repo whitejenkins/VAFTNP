@@ -41,6 +41,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 
 ### Host Header Injection
 - `POST /auth/forgot` (сброс использует `request.host`)
+- `GET /admin.php` для admin-пользователя: доступ к панели завязан на `X-Forwarded-Host` (ожидается `176.105.200.130`, можно подменить заголовок)
 
 ### XML Injection / XXE
 - `POST /api/import-xml`
