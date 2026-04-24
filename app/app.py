@@ -184,7 +184,10 @@ def create_app():
             code = request.form.get("code", "").strip()
             if has_empty(code):
                 flash("2FA code is required.", "error")
-                return render_template("twofa.html", cart_count=len(session.get("cart", [])), demo_code=current_code), 400
+                return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
+            if not re.fullmatch(r"\d{4}", code):
+                flash("2FA code must be exactly 4 digits.", "error")
+                return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
             if code == current_code or code == previous_code:
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
@@ -193,9 +196,9 @@ def create_app():
                 session.pop("pre_2fa_user", None)
                 return redirect(url_for("admin_php"))
             flash("Invalid 2FA code.", "error")
-            return render_template("twofa.html", cart_count=len(session.get("cart", [])), demo_code=current_code), 401
+            return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
 
-        return render_template("twofa.html", cart_count=len(session.get("cart", [])), demo_code=current_code)
+        return render_template("twofa.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/admin.php")
     def admin_php():
