@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Wishlist - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>My wishlist</h1>
+  <table class="table">
+    <tr><th>Product</th><th>Price</th><th></th></tr>
+    {% for i in items %}
+    <tr>
+      <td>{{ i.name }}</td>
+      <td>${{ i.price }}</td>
+      <td>
+        <form method="post" action="/wishlist/remove/{{i.id}}"><button class="btn danger">Remove</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
