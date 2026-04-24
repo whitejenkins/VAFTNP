@@ -21,7 +21,7 @@
       {% endif %}
     </div>
   </div>
-  <main class="container">
+  <main class="container app-main">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
       <div class="alerts">
@@ -33,6 +33,12 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
-  <div class="footer">VulnShop lab • realistic insecure e-commerce training app</div>
+  <footer class="footer">
+    <div class="footer-inner">
+      <strong>VulnShop</strong>
+      <span>Training e-commerce platform</span>
+      <span class="muted">For local security labs only</span>
+    </div>
+  </footer>
 </body>
 </html>
