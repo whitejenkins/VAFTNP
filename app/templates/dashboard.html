@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Dashboard</h1>
+  <p>{{user.username}} ({{user.role}}) — {{user.email}}</p>
+  <p>
+    <a class="btn secondary" href="/account/profile">Edit profile</a>
+    <a class="btn secondary" href="/wishlist">Wishlist</a>
+    <a class="btn secondary" href="/support">Support</a>
+  </p>
+
+  <h3>Your orders</h3>
+  <ul>{% for o in orders %}<li>Order #{{o.id}} ${{o.total}} / Product {{o.product_id}}</li>{% endfor %}</ul>
+
+  <h3>Wishlist snapshot</h3>
+  <ul>{% for w in wishlist_items %}<li>{{w.name}} — ${{w.price}}</li>{% endfor %}</ul>
+
+  <form action="/account/promote" method="post">
+    <input name="target_user_id" value="{{user.id}}"><input name="role" value="admin"><button class="btn danger">Promote</button>
+  </form>
+</div>
+{% endblock %}
