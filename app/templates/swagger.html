@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Swagger - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>API Documentation</h1>
+  <p class="muted">OpenAPI / Swagger docs for VulnShop endpoints.</p>
+  <div id="swagger-ui"></div>
+</div>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+  window.addEventListener('load', () => {
+    window.ui = SwaggerUIBundle({
+      url: '/openapi.json',
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      presets: [SwaggerUIBundle.presets.apis],
+      layout: 'BaseLayout'
+    });
+  });
+</script>
+{% endblock %}
