@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Sign up - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:460px;margin:auto">
+  <h1>Create account</h1>
+  <form method="post">
+    <input name="username" placeholder="Username">
+    <input name="email" placeholder="Email">
+    <input name="password" placeholder="Password" type="password">
+    <button class="btn">Create account</button>
+  </form>
+</div>
+{% endblock %}
