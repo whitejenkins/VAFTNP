@@ -8,6 +8,9 @@
     <p><span class="badge">{{ product.category }}</span></p>
     <p class="price" style="font-size:26px">${{ product.price }}</p>
     <a class="btn" href="/cart/add/{{product.id}}">Add to cart</a>
+    <form method="post" action="/wishlist/add/{{product.id}}" style="margin-top:10px">
+      <button class="btn secondary">Add to wishlist</button>
+    </form>
   </div>
   <div class="panel">
     <h3>Related products</h3>

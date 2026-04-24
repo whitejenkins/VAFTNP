@@ -26,6 +26,22 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS wishlists (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT,
+  product_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT,
+  subject VARCHAR(200),
+  message TEXT,
+  status VARCHAR(20) DEFAULT 'open',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 INSERT INTO users (username,email,password,role,twofa_secret,bio) VALUES
 ('admin','admin@shop.local','admin123','admin','111111','I am admin'),
 ('alice','alice@shop.local','alice123','user','222222','hello'),
@@ -42,3 +58,11 @@ INSERT INTO orders (user_id,product_id,total,note) VALUES
 (2,1,49.90,'first order'),
 (2,3,12.50,'gift'),
 (3,2,89.00,'office setup');
+
+INSERT INTO wishlists (user_id,product_id) VALUES
+(2,2),
+(3,1);
+
+INSERT INTO support_tickets (user_id,subject,message,status) VALUES
+(2,'Delivery question','Where is my order #2?','open'),
+(3,'Invoice request','Need invoice copy for order #3','closed');

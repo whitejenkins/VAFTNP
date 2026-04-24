@@ -208,7 +208,27 @@ def create_app():
             user = cur.fetchone()
             cur.execute(f"SELECT * FROM orders WHERE user_id={uid}")
             orders = cur.fetchall()
-        return render_template("dashboard.html", user=user, orders=orders)
+            cur.execute(
+                "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
+                (uid,),
+            )
+            wishlist_items = cur.fetchall()
+        return render_template("dashboard.html", user=user, orders=orders, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+
+    @app.route("/account/profile", methods=["GET", "POST"])
+    @login_required
+    def profile():
+        uid = session.get("user_id")
+        if request.method == "POST":
+            email = request.form.get("email", "")
+            bio = request.form.get("bio", "")
+            with mysql_conn().cursor() as cur:
+                cur.execute("UPDATE users SET email=%s,bio=%s WHERE id=%s", (email, bio, uid))
+            flash("Profile updated.", "success")
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,username,email,bio,role FROM users WHERE id=%s", (uid,))
+            user = cur.fetchone()
+        return render_template("profile.html", user=user, cart_count=len(session.get("cart", [])))
 
     @app.route("/shop/product/<int:pid>")
     def product_card(pid):
@@ -240,6 +260,34 @@ def create_app():
         cart_items.append(pid)
         session["cart"] = cart_items
         return redirect(request.referrer or url_for("index"))
+
+    @app.route("/wishlist")
+    @login_required
+    def wishlist():
+        uid = session.get("user_id")
+        with mysql_conn().cursor() as cur:
+            cur.execute(
+                "SELECT w.id,p.id AS product_id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
+                (uid,),
+            )
+            items = cur.fetchall()
+        return render_template("wishlist.html", items=items, cart_count=len(session.get("cart", [])))
+
+    @app.route("/wishlist/add/<int:pid>", methods=["POST"])
+    @login_required
+    def wishlist_add(pid):
+        uid = session.get("user_id")
+        with mysql_conn().cursor() as cur:
+            cur.execute("INSERT INTO wishlists (user_id,product_id) VALUES (%s,%s)", (uid, pid))
+        return redirect(request.referrer or url_for("wishlist"))
+
+    @app.route("/wishlist/remove/<int:item_id>", methods=["POST"])
+    @login_required
+    def wishlist_remove(item_id):
+        uid = session.get("user_id")
+        with mysql_conn().cursor() as cur:
+            cur.execute("DELETE FROM wishlists WHERE id=%s AND user_id=%s", (item_id, uid))
+        return redirect(url_for("wishlist"))
 
     @app.route("/cart/remove/<int:pid>")
     def cart_remove(pid):
@@ -288,6 +336,24 @@ def create_app():
         payload = row or {}
         payload["idor_pattern"] = bool(row and row.get("user_id") != session.get("user_id"))
         return jsonify(payload)
+
+    @app.route("/support", methods=["GET", "POST"])
+    @login_required
+    def support():
+        uid = session.get("user_id")
+        if request.method == "POST":
+            subject = request.form.get("subject", "")
+            message = request.form.get("message", "")
+            with mysql_conn().cursor() as cur:
+                cur.execute(
+                    "INSERT INTO support_tickets (user_id,subject,message) VALUES (%s,%s,%s)",
+                    (uid, subject, message),
+                )
+            flash("Ticket created.", "success")
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,subject,status,created_at FROM support_tickets WHERE user_id=%s ORDER BY id DESC", (uid,))
+            tickets = cur.fetchall()
+        return render_template("support.html", tickets=tickets, cart_count=len(session.get("cart", [])))
 
     @app.route("/products/search")
     def products_search():
@@ -422,14 +488,6 @@ def create_app():
         content = requests.get(url, timeout=3).text
         injected = "example.com" not in parsed.netloc
         return render_template_string(content) + ("<!-- rfi-pattern -->" if injected else "")
-
-    @app.route("/safe/products")
-    def safe_products():
-        q = request.args.get("q", "")
-        with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,name,price FROM products WHERE name LIKE %s", (f"%{q}%",))
-            rows = cur.fetchall()
-        return jsonify(rows)
 
     @app.route("/openapi.json")
     def openapi():
