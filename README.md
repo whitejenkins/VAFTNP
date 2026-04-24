@@ -11,6 +11,7 @@
 docker compose up --build
 ```
 Сервис будет на `http://localhost:8000`.
+Swagger UI доступен на `http://localhost:8000/swagger`.
 
 Если видите ошибку подключения к MySQL с `caching_sha2_password`, убедитесь, что образ `web` пересобран с актуальным `requirements.txt` (в проект добавлен пакет `cryptography`).
 

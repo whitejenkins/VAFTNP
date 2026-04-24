@@ -1,6 +1,7 @@
 import os
 import time
 import subprocess
+import json
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -429,5 +430,30 @@ def create_app():
             cur.execute("SELECT id,name,price FROM products WHERE name LIKE %s", (f"%{q}%",))
             rows = cur.fetchall()
         return jsonify(rows)
+
+    @app.route("/openapi.json")
+    def openapi():
+        spec = {
+            "openapi": "3.0.3",
+            "info": {"title": "VulnShop API", "version": "1.0.0"},
+            "servers": [{"url": "/"}],
+            "paths": {
+                "/products/search": {"get": {"summary": "Search products (vulnerable SQLi demo)", "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
+                "/auth/login": {"post": {"summary": "Login", "responses": {"200": {"description": "ok"}}}, "put": {"summary": "Verb tampering demo", "responses": {"200": {"description": "ok"}}}},
+                "/auth/register": {"post": {"summary": "Register user", "responses": {"200": {"description": "ok"}}}},
+                "/auth/forgot": {"post": {"summary": "Forgot password", "responses": {"200": {"description": "ok"}}}},
+                "/api/reviews/search": {"post": {"summary": "NoSQL search", "responses": {"200": {"description": "ok"}}}},
+                "/api/import-xml": {"post": {"summary": "XML import", "responses": {"200": {"description": "ok"}}}},
+                "/tools/ping": {"get": {"summary": "Ping utility", "parameters": [{"name": "host", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
+                "/admin/eval": {"post": {"summary": "Eval endpoint", "responses": {"200": {"description": "ok"}}}},
+                "/files/upload": {"post": {"summary": "Upload file", "responses": {"200": {"description": "ok"}}}},
+                "/swagger": {"get": {"summary": "Swagger UI", "responses": {"200": {"description": "ok"}}}},
+            },
+        }
+        return app.response_class(json.dumps(spec), mimetype="application/json")
+
+    @app.route("/swagger")
+    def swagger():
+        return render_template("swagger.html", cart_count=len(session.get("cart", [])))
 
     return app
