@@ -1,4 +1,4 @@
-# VulnShop (Training Lab)
+# VulnShop (Training Lab for Digital)
 
 > Учебное **намеренно уязвимое** веб-приложение интернет-магазина для пентестеров.
 
