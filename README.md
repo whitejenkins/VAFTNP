@@ -52,7 +52,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - No rate limiting: ограничения по частоте запросов на логине отсутствуют
-- Default credentials: `admin/admin123`
+- Default credentials: `alice/Hightower7`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
 - Bypass 2FA via direct access + response replacement: `GET /admin.php` возвращает `302`, но в теле уже есть защищенный контент
@@ -75,6 +75,6 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Часть маршрутов реализована безопаснее, часть — намеренно уязвима для учебы.
 
 ## Seed users
-- `admin / admin123`
-- `alice / alice123`
-- `bob / bob123`
+- `admin / Riv3rN0rth!29`
+- `alice / Hightower7`
+- `bob / KestrelMoon84#`

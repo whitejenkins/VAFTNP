@@ -43,9 +43,9 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 );
 
 INSERT INTO users (username,email,password,role,twofa_secret,bio) VALUES
-('admin','admin@shop.local','admin123','admin','111111','I am admin'),
-('alice','alice@shop.local','alice123','user','222222','hello'),
-('bob','bob@shop.local','bob123','user','333333','safe user')
+('admin','admin@shop.local','Riv3rN0rth!29','admin','111111','I am admin'),
+('alice','alice@shop.local','Hightower7','user','222222','hello'),
+('bob','bob@shop.local','KestrelMoon84#','user','333333','safe user')
 ON DUPLICATE KEY UPDATE username=username;
 
 INSERT INTO products (name,description,price,category) VALUES

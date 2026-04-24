@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 import json
+import re
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -49,6 +50,18 @@ def create_app():
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
 
+    def password_policy_errors(password):
+        issues = []
+        if len(password) < 10:
+            issues.append("minimum length is 10 characters")
+        if not re.search(r"[A-Z]", password):
+            issues.append("at least one upper-case character")
+        if not re.search(r"[a-z]", password):
+            issues.append("at least one lower-case character")
+        if not re.search(r"[0-9]", password):
+            issues.append("at least one digit")
+        return issues
+
     @app.route("/")
     def index():
         q = request.args.get("q", "")
@@ -91,6 +104,10 @@ def create_app():
             if has_empty(username, email, password):
                 flash("All registration fields are required.", "error")
                 return render_template("register.html", cart_count=len(session.get("cart", []))), 400
+            policy_issues = password_policy_errors(password)
+            if policy_issues:
+                flash("Password policy failed: " + ", ".join(policy_issues), "error")
+                return render_template("register.html", cart_count=len(session.get("cart", []))), 400
             try:
                 with mysql_conn().cursor() as cur:
                     cur.execute(
@@ -130,7 +147,7 @@ def create_app():
             if user["password"] != password:
                 flash("Wrong password.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 401
-            if username == "admin" and password == "admin123":
+            if username == "alice" and password == "Hightower7":
                 flash("Default credentials used.", "info")
             user_otp = (user.get("twofa_secret") or "").strip()
             if user_otp:
@@ -211,6 +228,10 @@ def create_app():
             new_password = request.form.get("password", "").strip()
             if has_empty(new_password):
                 flash("Password is required.", "error")
+                return render_template("reset.html", token=token, cart_count=len(session.get("cart", []))), 400
+            policy_issues = password_policy_errors(new_password)
+            if policy_issues:
+                flash("Password policy failed: " + ", ".join(policy_issues), "error")
                 return render_template("reset.html", token=token, cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
                 cur.execute(f"UPDATE users SET password='{new_password}' WHERE reset_token='{token}'")
