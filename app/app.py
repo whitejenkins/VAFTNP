@@ -207,9 +207,21 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute("SELECT id,username,role,twofa_secret FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
+        if not user:
+            session.pop("pre_2fa_user", None)
+            flash("2FA session expired. Please login again.", "error")
+            return redirect(url_for("login"))
         otp_seed = (user.get("twofa_secret") or "").strip()
+        if not otp_seed:
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["active"] = True
+            session.pop("pre_2fa_user", None)
+            resp = redirect(url_for("dashboard"))
+            resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
+            return resp
         current_code = rolling_otp(otp_seed) if otp_seed else ""
-        previous_code = rolling_otp(otp_seed, int(time.time()) - 600) if otp_seed else ""
 
         if request.method == "POST":
             code = request.form.get("code", "").strip()
@@ -219,7 +231,7 @@ def create_app():
             if not re.fullmatch(r"\d{4}", code):
                 flash("2FA code must be exactly 4 digits.", "error")
                 return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
-            if code == current_code or code == previous_code:
+            if code == current_code:
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["role"] = user["role"]
