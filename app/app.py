@@ -9,6 +9,7 @@ import requests
 from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
+from pymysql.err import IntegrityError
 
 
 def create_app():
@@ -83,11 +84,17 @@ def create_app():
             username = request.form.get("username", "")
             email = request.form.get("email", "")
             password = request.form.get("password", "")
-            with mysql_conn().cursor() as cur:
-                cur.execute(
-                    f"INSERT INTO users (username,email,password) VALUES ('{username}','{email}','{password}')"
-                )
-            return redirect(url_for("login"))
+            try:
+                with mysql_conn().cursor() as cur:
+                    cur.execute(
+                        f"INSERT INTO users (username,email,password) VALUES ('{username}','{email}','{password}')"
+                    )
+                flash("Registration completed.", "success")
+                return redirect(url_for("login"))
+            except IntegrityError:
+                # Intentional enum vector: different response for existing usernames/emails.
+                flash("User/email already exists.", "error")
+                return render_template("register.html", cart_count=len(session.get("cart", []))), 409
         return render_template("register.html")
 
     @app.route("/auth/login", methods=["GET", "POST", "PUT"])
@@ -167,11 +174,12 @@ def create_app():
     @app.route("/auth/forgot", methods=["GET", "POST"])
     def forgot_password():
         if request.method == "POST":
-            username = request.form.get("username", "")
+            username = request.form.get("username", "").strip()
             with mysql_conn().cursor() as cur:
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
                 if not user:
+                    # Intentional enum vector: explicit message if account does not exist.
                     flash("Account was not found.", "error")
                     return render_template("forgot.html", cart_count=len(session.get("cart", []))), 404
                 token = f"{user['id']}{int(time.time())}"

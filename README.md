@@ -1,6 +1,6 @@
-# VulnShop (Training Lab for Digital)
+# VulnShop (Training Lab)
 
-> Учебное **намеренно уязвимое** веб-приложение интернет-магазина для пентестеров.
+> Учебное **намеренно уязвимое** веб-приложение интернет-магазина для молодых пентестеров.
 
 ## Важно
 - Это приложение создано только для безопасной локальной лаборатории CTF/обучения.
@@ -48,7 +48,7 @@ docker compose up --build
 - `GET|POST /promo/preview`
 
 ### Auth/Session уязвимости
-- Enumeration users: разные ответы в `/auth/login`
+- Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - No rate limiting: ограничения по частоте запросов на логине отсутствуют
 - Default credentials: `admin/admin123`
