@@ -180,16 +180,12 @@ def create_app():
                 user = cur.fetchone()
                 if not user:
                     # Intentional enum vector: explicit message if account does not exist.
-                    flash("Account was not found.", "error")
+                    flash("User not found.", "error")
                     return render_template("forgot.html", cart_count=len(session.get("cart", []))), 404
                 token = f"{user['id']}{int(time.time())}"
                 cur.execute(f"UPDATE users SET reset_token='{token}' WHERE id={user['id']}")
-            reset_link = f"http://{request.host}/auth/reset?token={token}"
-            injected_host = not any(x in request.host.lower() for x in ["localhost", "127.0.0.1", "vulnshop", "web"])
-            msg = reset_link
-            if injected_host:
-                msg += " | host-header-modified"
-            return render_template("notice.html", title="Password reset link generated", message=msg, kind="success")
+            flash("Reset link was sent to your email.", "success")
+            return render_template("forgot.html", cart_count=len(session.get("cart", [])))
         return render_template("forgot.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/reset", methods=["GET", "POST"])
