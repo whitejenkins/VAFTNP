@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:760px;margin:auto;text-align:center">
+  <h1>{{ title }}</h1>
+  <p class="muted" style="word-break:break-all">{{ message }}</p>
+  <p style="margin-top:18px">
+    <a class="btn" href="/auth/login">Go to login</a>
+    <a class="btn secondary" href="/">Back to catalog</a>
+  </p>
+</div>
+{% endblock %}
