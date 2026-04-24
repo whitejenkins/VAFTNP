@@ -225,7 +225,7 @@ def create_app():
                 session["role"] = user["role"]
                 session["active"] = True
                 session.pop("pre_2fa_user", None)
-                resp = redirect(url_for("admin_php"))
+                resp = redirect(url_for("dashboard"))
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp
             flash("Invalid 2FA code.", "error")
