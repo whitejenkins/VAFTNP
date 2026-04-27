@@ -6,15 +6,19 @@ import re
 import hashlib
 import base64
 import binascii
+import random
 from functools import wraps
 from urllib.parse import urlparse
 
 import pymysql
 import requests
+from bson.objectid import ObjectId
+from bson.errors import InvalidId
 from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
-from pymysql.err import IntegrityError
+from pymongo.errors import OperationFailure
+from pymysql.err import IntegrityError, OperationalError
 
 
 def create_app():
@@ -32,14 +36,82 @@ def create_app():
 
     mongo = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
     reviews = mongo.vulnshop.reviews
-    if reviews.count_documents({}) == 0:
-        reviews.insert_many([
-            {"product": "Gaming Mouse", "author": "alice", "rating": 5, "text": "nice"},
-            {"product": "Coffee Mug", "author": "bob", "rating": 3, "text": "ok"},
-        ])
+    payment_cards = mongo.vulnshop.payment_cards
 
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
+
+    def seed_demo_reviews():
+        demo_authors = ["alice", "bob", "charlie", "diana", "eve", "frank"]
+        demo_texts = [
+            "Great quality for the price.",
+            "Works exactly as expected.",
+            "Packaging was excellent and shipping was fast.",
+            "Good choice for everyday usage.",
+            "I would buy this again.",
+            "Could be better, but still decent.",
+        ]
+        try:
+            with mysql_conn().cursor() as cur:
+                cur.execute("SELECT id,name FROM products ORDER BY id LIMIT 24")
+                products = cur.fetchall()
+        except OperationalError:
+            return False
+        for product in products:
+            existing = reviews.count_documents({"product_id": product["id"]})
+            if existing >= 3:
+                continue
+            to_insert = []
+            for _ in range(3 - existing):
+                to_insert.append(
+                    {
+                        "product_id": product["id"],
+                        "product": product["name"],
+                        "author": random.choice(demo_authors),
+                        "rating": random.randint(3, 5),
+                        "text": random.choice(demo_texts),
+                        "status": random.choice(["approved", "approved", "pending"]),
+                        "created_at": int(time.time()) - random.randint(0, 86400 * 60),
+                    }
+                )
+            if to_insert:
+                reviews.insert_many(to_insert)
+        return True
+
+    def seed_payment_cards():
+        if payment_cards.count_documents({}) > 0:
+            return
+        payment_cards.insert_many(
+            [
+                {
+                    "user_id": 1,
+                    "username": "admin",
+                    "cardholder": "Admin River North",
+                    "card_number": "4111-1111-1111-1111",
+                    "exp": "12/30",
+                    "cvv": "999",
+                    "created_at": int(time.time()) - 3600,
+                },
+                {
+                    "user_id": 2,
+                    "username": "alice",
+                    "cardholder": "Alice Hightower",
+                    "card_number": "5555-4444-3333-1111",
+                    "exp": "08/29",
+                    "cvv": "123",
+                    "created_at": int(time.time()) - 1800,
+                },
+            ]
+        )
+
+    startup_state = {"reviews_seeded": seed_demo_reviews()}
+    seed_payment_cards()
+
+    @app.before_request
+    def ensure_reviews_seeded():
+        if startup_state["reviews_seeded"]:
+            return
+        startup_state["reviews_seeded"] = seed_demo_reviews()
 
     def login_required(fn):
         @wraps(fn)
@@ -77,10 +149,12 @@ def create_app():
 
     def admin_ip_allowed():
         admin_ip = "176.105.200.130"
+        forwarded_for = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
         forwarded_host = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
         host_candidate = forwarded_host or (request.host or "").split(",")[0].strip()
         host_ip = host_candidate.split(":")[0]
-        return host_ip == admin_ip, admin_ip
+        client_ip = forwarded_for.split(":")[0]
+        return (host_ip == admin_ip) or (client_ip == admin_ip), admin_ip
 
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
@@ -281,7 +355,83 @@ def create_app():
             users = cur.fetchall()
             cur.execute("SELECT id,user_id,total,created_at FROM orders ORDER BY id DESC LIMIT 20")
             orders = cur.fetchall()
-        return render_template("admin.html", users=users, orders=orders, cart_count=len(session.get("cart", [])))
+            cur.execute("SELECT id,name FROM products ORDER BY id DESC LIMIT 20")
+            products = cur.fetchall()
+        pending_reviews = list(
+            reviews.find(
+                {"status": "pending"},
+                {"_id": 1, "product": 1, "author": 1, "rating": 1, "text": 1, "created_at": 1},
+            )
+            .sort("created_at", -1)
+            .limit(30)
+        )
+        return render_template(
+            "admin.html",
+            users=users,
+            orders=orders,
+            products=products,
+            pending_reviews=pending_reviews,
+            cart_count=len(session.get("cart", [])),
+        )
+
+    @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_user_delete(user_id):
+        if user_id == session.get("user_id"):
+            flash("You cannot delete your own account from admin panel.", "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        flash("User deleted.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
+    @admin_required
+    def admin_user_promote(user_id):
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET role='admin' WHERE id=%s", (user_id,))
+        flash("User role promoted to admin.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/users/<int:user_id>/password", methods=["POST"])
+    @admin_required
+    def admin_user_password_change(user_id):
+        new_password = request.form.get("password", "").strip()
+        if has_empty(new_password):
+            flash("Password is required.", "error")
+            return redirect(url_for("admin_php"))
+        policy_issues = password_policy_errors(new_password)
+        if policy_issues:
+            flash("Password policy failed: " + ", ".join(policy_issues), "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET password=%s WHERE id=%s", (new_password, user_id))
+        flash("User password changed.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/reviews/<review_id>/approve", methods=["POST"])
+    @admin_required
+    def admin_review_approve(review_id):
+        try:
+            oid = ObjectId(review_id)
+        except InvalidId:
+            flash("Invalid review id.", "error")
+            return redirect(url_for("admin_php"))
+        reviews.update_one({"_id": oid}, {"$set": {"status": "approved"}})
+        flash("Review approved.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/reviews/<review_id>/reject", methods=["POST"])
+    @admin_required
+    def admin_review_reject(review_id):
+        try:
+            oid = ObjectId(review_id)
+        except InvalidId:
+            flash("Invalid review id.", "error")
+            return redirect(url_for("admin_php"))
+        reviews.update_one({"_id": oid}, {"$set": {"status": "rejected"}})
+        flash("Review rejected.", "success")
+        return redirect(url_for("admin_php"))
 
     @app.route("/auth/forgot", methods=["GET", "POST"])
     def forgot_password():
@@ -364,7 +514,52 @@ def create_app():
             related = cur.fetchall()
         if not product:
             return "Product not found", 404
-        return render_template("product.html", product=product, related=related, cart_count=len(session.get("cart", [])))
+        published_reviews = list(
+            reviews.find({"product_id": pid, "status": "approved"}, {"_id": 0})
+            .sort("created_at", -1)
+            .limit(15)
+        )
+        avg_rating = round(sum(r["rating"] for r in published_reviews) / len(published_reviews), 2) if published_reviews else None
+        return render_template(
+            "product.html",
+            product=product,
+            related=related,
+            reviews=published_reviews,
+            avg_rating=avg_rating,
+            cart_count=len(session.get("cart", [])),
+        )
+
+    @app.route("/product/<int:pid>/reviews", methods=["POST"])
+    @login_required
+    def create_review(pid):
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,name FROM products WHERE id=%s", (pid,))
+            product = cur.fetchone()
+        if not product:
+            return "Product not found", 404
+
+        rating_raw = request.form.get("rating", "").strip()
+        text = request.form.get("text", "").strip()
+        if has_empty(rating_raw, text):
+            flash("Rating and review text are required.", "error")
+            return redirect(url_for("product_card", pid=pid))
+        if not rating_raw.isdigit() or not 1 <= int(rating_raw) <= 5:
+            flash("Rating must be an integer from 1 to 5.", "error")
+            return redirect(url_for("product_card", pid=pid))
+
+        reviews.insert_one(
+            {
+                "product_id": pid,
+                "product": product["name"],
+                "author": session.get("username", "guest"),
+                "rating": int(rating_raw),
+                "text": text,
+                "status": "pending",
+                "created_at": int(time.time()),
+            }
+        )
+        flash("Review submitted and sent for moderation.", "success")
+        return redirect(url_for("product_card", pid=pid))
 
     @app.route("/cart")
     def cart():
@@ -428,6 +623,13 @@ def create_app():
         ids = session.get("cart", [])
         if not ids:
             return redirect(url_for("cart"))
+        cardholder = request.form.get("cardholder", "").strip()
+        card_number = request.form.get("card_number", "").strip()
+        exp = request.form.get("exp", "").strip()
+        cvv = request.form.get("cvv", "").strip()
+        if has_empty(cardholder, card_number, exp, cvv):
+            flash("Cardholder, card number, exp and CVV are required for checkout.", "error")
+            return redirect(url_for("cart"))
         placeholders = ",".join(["%s"] * len(ids))
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT id,price FROM products WHERE id IN ({placeholders})", tuple(ids))
@@ -438,6 +640,17 @@ def create_app():
                     "INSERT INTO orders (user_id,product_id,total,note) VALUES (%s,%s,%s,%s)",
                     (session.get("user_id"), p["id"], total, "checkout order"),
                 )
+        payment_cards.insert_one(
+            {
+                "user_id": session.get("user_id"),
+                "username": session.get("username"),
+                "cardholder": cardholder,
+                "card_number": card_number,
+                "exp": exp,
+                "cvv": cvv,
+                "created_at": int(time.time()),
+            }
+        )
         session["cart"] = []
         return redirect(url_for("dashboard"))
 
@@ -529,18 +742,93 @@ def create_app():
             return "Product not found", 404
 
         query = {"product": product["name"]}
+        moderation_items = list(
+            reviews.find({"product_id": pid}, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
+            .sort("created_at", -1)
+            .limit(40)
+        )
         results = []
+        author_input = ""
+        rating_input = ""
+        text_input = ""
+        cardholder_input = ""
+        card_results = []
+        search_results_pretty = "[]"
         if request.method == "POST":
-            author = maybe_json(request.form.get("author"))
-            rating = maybe_json(request.form.get("rating"))
-            query = {"product": product["name"], "author": author, "rating": rating}
+            action = request.form.get("action", "filter")
+            if action in {"approve", "reject", "delete"}:
+                review_id = request.form.get("review_id", "").strip()
+                if review_id:
+                    try:
+                        oid = ObjectId(review_id)
+                    except InvalidId:
+                        flash("Invalid review id.", "error")
+                        return redirect(url_for("reviews_moderation", pid=pid))
+                    if action == "delete":
+                        reviews.delete_one({"_id": oid, "product_id": pid})
+                    else:
+                        next_status = "approved" if action == "approve" else "rejected"
+                        reviews.update_one({"_id": oid, "product_id": pid}, {"$set": {"status": next_status}})
+                    flash("Review moderation action applied.", "success")
+                return redirect(url_for("reviews_moderation", pid=pid))
+        if request.method == "POST" or any(request.args.get(x) for x in ("author", "rating", "text", "cardholder")):
+            author_input = request.values.get("author", "").strip()
+            rating_input = request.values.get("rating", "").strip()
+            text_input = request.values.get("text", "").strip()
+            cardholder_input = request.values.get("cardholder", "").strip()
+            parsed_author = maybe_json(author_input) if author_input else ""
+            parsed_rating = maybe_json(rating_input) if rating_input else ""
+            parsed_text = maybe_json(text_input) if text_input else ""
+            filters = []
+            if author_input:
+                filters.append({"author": parsed_author})
+            if rating_input:
+                filters.append({"rating": parsed_rating})
+            if text_input:
+                filters.append({"text": parsed_text})
+            query = {"product": product["name"]}
+            if filters:
+                query["$or"] = filters
             results = list(reviews.find(query, {"_id": 0}))
+            card_query = {}
+            if cardholder_input:
+                parsed_cardholder = maybe_json(cardholder_input)
+                if isinstance(parsed_cardholder, dict):
+                    card_ops = set(parsed_cardholder.keys())
+                    field_level_ops = {"$ne", "$in", "$regex"}
+                    if "cardholder" in parsed_cardholder:
+                        card_query = parsed_cardholder
+                    elif card_ops.intersection(field_level_ops):
+                        card_query = {"cardholder": parsed_cardholder}
+                    else:
+                        card_query = parsed_cardholder
+                else:
+                    card_query = {"cardholder": parsed_cardholder}
+                try:
+                    card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
+                except OperationFailure as exc:
+                    flash(f"Card lookup query error: {exc.details.get('errmsg', str(exc))}", "error")
+                    card_results = []
+                search_results_pretty = json.dumps(
+                    {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
+                    ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+        review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
 
         return render_template(
             "reviews_moderation.html",
             product=product,
             review_query=query,
+            review_query_pretty=review_query_pretty,
             review_results=results,
+            filter_author=author_input,
+            filter_rating=rating_input,
+            filter_text=text_input,
+            filter_cardholder=cardholder_input,
+            search_results_pretty=search_results_pretty,
+            moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
         )
 
@@ -549,22 +837,48 @@ def create_app():
     def pricing_rule_preview():
         expr = "(1299.99*0.92) + 49"
         result = None
+        saved_rules = session.setdefault("pricing_rules", [])
         if request.method == "POST":
             expr = request.form.get("expr", expr)
             result = str(eval(expr))
-        return render_template("pricing_rule_preview.html", expr=expr, result=result, cart_count=len(session.get("cart", [])))
+            if request.form.get("action") == "save":
+                title = request.form.get("title", "").strip() or f"Rule {len(saved_rules) + 1}"
+                saved_rules.insert(0, {"title": title, "expr": expr, "result": result})
+                session["pricing_rules"] = saved_rules[:20]
+                flash("Rule saved to draft list.", "success")
+        return render_template(
+            "pricing_rule_preview.html",
+            expr=expr,
+            result=result,
+            saved_rules=saved_rules,
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/admin/catalog/import/xml", methods=["GET", "POST"])
     @admin_required
     def admin_catalog_import_xml():
         xml_payload = "<products><item><name>Sample</name></item></products>"
         parsed = None
+        imported_items = []
         if request.method == "POST":
             xml_payload = request.form.get("xml_payload", xml_payload)
             parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
             root = etree.fromstring(xml_payload.encode(), parser=parser)
             parsed = {"root": root.tag, "text": root.text}
-        return render_template("catalog_import_xml.html", xml_payload=xml_payload, parsed=parsed, cart_count=len(session.get("cart", [])))
+            for item in root.findall(".//item"):
+                imported_items.append(
+                    {
+                        "name": (item.findtext("name") or "").strip() or "Untitled",
+                        "price": (item.findtext("price") or "0").strip(),
+                    }
+                )
+        return render_template(
+            "catalog_import_xml.html",
+            xml_payload=xml_payload,
+            parsed=parsed,
+            imported_items=imported_items,
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/admin/marketing/email/preview", methods=["GET", "POST"])
     @admin_required
@@ -572,11 +886,24 @@ def create_app():
         tpl = "<h2>{{user}}, your gadgets are waiting</h2>"
         user = session.get("username", "guest")
         html = None
+        drafts = session.setdefault("campaign_drafts", [])
         if request.method == "POST":
             tpl = request.form.get("tpl", tpl)
             user = request.form.get("user", user)
             html = render_template_string(tpl, user=user, session=session)
-        return render_template("marketing_email_preview.html", tpl=tpl, user=user, html=html, cart_count=len(session.get("cart", [])))
+            if request.form.get("action") == "save":
+                subject = request.form.get("subject", "").strip() or f"Campaign {len(drafts) + 1}"
+                drafts.insert(0, {"subject": subject, "user": user, "tpl": tpl})
+                session["campaign_drafts"] = drafts[:20]
+                flash("Campaign draft saved.", "success")
+        return render_template(
+            "marketing_email_preview.html",
+            tpl=tpl,
+            user=user,
+            html=html,
+            drafts=drafts,
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/products/search")
     def products_search():
@@ -686,10 +1013,16 @@ def create_app():
                 "/shop/deals": {"get": {"summary": "Current deals", "responses": {"200": {"description": "ok"}}}},
                 "/account/addresses": {"get": {"summary": "Address book", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Add address", "responses": {"200": {"description": "ok"}}}},
                 "/shipping/carrier/diagnostics": {"get": {"summary": "Carrier diagnostics page", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Run carrier diagnostics", "responses": {"200": {"description": "ok"}}}},
-                "/product/{pid}/reviews/moderation": {"post": {"summary": "Reviews moderation filter", "responses": {"200": {"description": "ok"}}}},
+                "/product/{pid}/reviews": {"post": {"summary": "Create product review", "responses": {"200": {"description": "ok"}}}},
+                "/product/{pid}/reviews/moderation": {"get": {"summary": "Reviews moderation dashboard", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Reviews moderation actions/filter", "responses": {"200": {"description": "ok"}}}},
                 "/admin/pricing/rules/preview": {"post": {"summary": "Pricing rule preview", "responses": {"200": {"description": "ok"}}}},
                 "/admin/catalog/import/xml": {"post": {"summary": "Catalog XML import", "responses": {"200": {"description": "ok"}}}},
                 "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/delete": {"post": {"summary": "Delete user", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/promote": {"post": {"summary": "Promote user to admin", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/password": {"post": {"summary": "Change user password", "responses": {"200": {"description": "ok"}}}},
+                "/admin/reviews/{review_id}/approve": {"post": {"summary": "Approve pending review", "responses": {"200": {"description": "ok"}}}},
+                "/admin/reviews/{review_id}/reject": {"post": {"summary": "Reject pending review", "responses": {"200": {"description": "ok"}}}},
                 "/files/upload": {"post": {"summary": "Upload file", "responses": {"200": {"description": "ok"}}}},
                 "/swagger": {"get": {"summary": "Swagger UI", "responses": {"200": {"description": "ok"}}}},
             },
