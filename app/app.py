@@ -725,19 +725,24 @@ def create_app():
             author_input = request.values.get("author", "").strip()
             rating_input = request.values.get("rating", "").strip()
             text_input = request.values.get("text", "").strip()
-            query = {"product": product["name"]}
+            filters = []
             if author_input:
-                query["author"] = maybe_json(author_input)
+                filters.append({"author": maybe_json(author_input)})
             if rating_input:
-                query["rating"] = maybe_json(rating_input)
+                filters.append({"rating": maybe_json(rating_input)})
             if text_input:
-                query["text"] = maybe_json(text_input)
+                filters.append({"text": maybe_json(text_input)})
+            query = {"product": product["name"]}
+            if filters:
+                query["$or"] = filters
             results = list(reviews.find(query, {"_id": 0}))
+        review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
 
         return render_template(
             "reviews_moderation.html",
             product=product,
             review_query=query,
+            review_query_pretty=review_query_pretty,
             review_results=results,
             filter_author=author_input,
             filter_rating=rating_input,
