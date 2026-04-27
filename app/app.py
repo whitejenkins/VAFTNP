@@ -35,7 +35,7 @@ def create_app():
 
     mongo = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
     reviews = mongo.vulnshop.reviews
-    secret_cards = mongo.vulnshop.secret_cards
+    payment_cards = mongo.vulnshop.payment_cards
 
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
@@ -77,23 +77,7 @@ def create_app():
                 reviews.insert_many(to_insert)
         return True
 
-    def seed_secret_cards():
-        if secret_cards.count_documents({}) > 0:
-            return
-        cards = []
-        for _ in range(6):
-            token = "".join(str(random.randint(0, 9)) for _ in range(16))
-            cards.append(
-                {
-                    "holder": random.choice(["Alice", "Bob", "Charlie", "Diana", "Eve"]),
-                    "card": f"{token[:4]}-{token[4:8]}-{token[8:12]}-{token[12:16]}",
-                    "note": "internal vault card",
-                }
-            )
-        secret_cards.insert_many(cards)
-
     startup_state = {"reviews_seeded": seed_demo_reviews()}
-    seed_secret_cards()
 
     @app.before_request
     def ensure_reviews_seeded():
@@ -619,6 +603,13 @@ def create_app():
         ids = session.get("cart", [])
         if not ids:
             return redirect(url_for("cart"))
+        cardholder = request.form.get("cardholder", "").strip()
+        card_number = request.form.get("card_number", "").strip()
+        exp = request.form.get("exp", "").strip()
+        cvv = request.form.get("cvv", "").strip()
+        if has_empty(cardholder, card_number, exp, cvv):
+            flash("Cardholder, card number, exp and CVV are required for checkout.", "error")
+            return redirect(url_for("cart"))
         placeholders = ",".join(["%s"] * len(ids))
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT id,price FROM products WHERE id IN ({placeholders})", tuple(ids))
@@ -629,6 +620,17 @@ def create_app():
                     "INSERT INTO orders (user_id,product_id,total,note) VALUES (%s,%s,%s,%s)",
                     (session.get("user_id"), p["id"], total, "checkout order"),
                 )
+        payment_cards.insert_one(
+            {
+                "user_id": session.get("user_id"),
+                "username": session.get("username"),
+                "cardholder": cardholder,
+                "card_number": card_number,
+                "exp": exp,
+                "cvv": cvv,
+                "created_at": int(time.time()),
+            }
+        )
         session["cart"] = []
         return redirect(url_for("dashboard"))
 
@@ -729,6 +731,9 @@ def create_app():
         author_input = ""
         rating_input = ""
         text_input = ""
+        cardholder_input = ""
+        card_results = []
+        card_query_pretty = "{}"
         if request.method == "POST":
             action = request.form.get("action", "filter")
             if action in {"approve", "reject", "delete"}:
@@ -746,19 +751,14 @@ def create_app():
                         reviews.update_one({"_id": oid, "product_id": pid}, {"$set": {"status": next_status}})
                     flash("Review moderation action applied.", "success")
                 return redirect(url_for("reviews_moderation", pid=pid))
-        if request.method == "POST" or any(request.args.get(x) for x in ("author", "rating", "text")):
+        if request.method == "POST" or any(request.args.get(x) for x in ("author", "rating", "text", "cardholder")):
             author_input = request.values.get("author", "").strip()
             rating_input = request.values.get("rating", "").strip()
             text_input = request.values.get("text", "").strip()
+            cardholder_input = request.values.get("cardholder", "").strip()
             parsed_author = maybe_json(author_input) if author_input else ""
             parsed_rating = maybe_json(rating_input) if rating_input else ""
             parsed_text = maybe_json(text_input) if text_input else ""
-            if isinstance(parsed_author, str) and looks_like_nosqli_probe(parsed_author):
-                parsed_author = {"$ne": None}
-            if isinstance(parsed_rating, str) and looks_like_nosqli_probe(parsed_rating):
-                parsed_rating = {"$ne": None}
-            if isinstance(parsed_text, str) and looks_like_nosqli_probe(parsed_text):
-                parsed_text = {"$ne": None}
             filters = []
             if author_input:
                 filters.append({"author": parsed_author})
@@ -770,13 +770,10 @@ def create_app():
             if filters:
                 query["$or"] = filters
             results = list(reviews.find(query, {"_id": 0}))
-            nosql_payload_detected = any(
-                isinstance(x, dict) and any(str(k).startswith("$") for k in x.keys())
-                for x in (parsed_author, parsed_rating, parsed_text)
-            ) or any(looks_like_nosqli_probe(x) for x in (author_input, rating_input, text_input))
-            if nosql_payload_detected and results:
-                leaked_cards = list(secret_cards.find({}, {"_id": 0}).limit(5))
-                results.append({"nosqli_leak": leaked_cards})
+            if cardholder_input:
+                card_query = {"cardholder": maybe_json(cardholder_input)}
+                card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
+                card_query_pretty = json.dumps(card_query, ensure_ascii=False, indent=2, default=str)
         review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
 
         return render_template(
@@ -788,6 +785,9 @@ def create_app():
             filter_author=author_input,
             filter_rating=rating_input,
             filter_text=text_input,
+            filter_cardholder=cardholder_input,
+            card_results=card_results,
+            card_query_pretty=card_query_pretty,
             moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
         )

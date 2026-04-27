@@ -9,6 +9,7 @@
     <input name="author" value="{{ filter_author }}" placeholder="Author (e.g. alice)">
     <input name="rating" value="{{ filter_rating }}" placeholder="Rating (e.g. 5)">
     <input name="text" value="{{ filter_text }}" placeholder="Review text contains...">
+    <input name="cardholder" value="{{ filter_cardholder }}" placeholder="Cardholder lookup (NoSQL demo)">
     <button class="btn">Apply filter</button>
   </form>
 
@@ -20,6 +21,13 @@
   <div class="panel" style="margin-top:10px">
     <h3>Results</h3>
     <pre style="white-space:pre-wrap;overflow-x:auto;max-width:100%;word-break:break-word">{{ review_results }}</pre>
+  </div>
+
+  <div class="panel" style="margin-top:10px">
+    <h3>Card lookup query (Mongo)</h3>
+    <pre style="white-space:pre-wrap;overflow-x:auto;max-width:100%;word-break:break-word">{{ card_query_pretty }}</pre>
+    <h3>Leaked cards</h3>
+    <pre style="white-space:pre-wrap;overflow-x:auto;max-width:100%;word-break:break-word">{{ card_results }}</pre>
   </div>
 
   <h3>All product reviews</h3>

