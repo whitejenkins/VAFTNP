@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Sign up - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:460px;margin:auto">
+  <h1>Create account</h1>
+  <div class="policy-box">
+    <p><strong>Password policy:</strong></p>
+    <ul>
+      <li>at least one upper-case character</li>
+      <li>at least one lower-case character</li>
+      <li>at least one digit</li>
+      <li>minimum 10 characters</li>
+    </ul>
+  </div>
+  <form method="post">
+    <input name="username" placeholder="Username" required>
+    <input name="email" placeholder="Email" type="email" required>
+    <input name="password" placeholder="Password" type="password" minlength="10" required>
+    <button class="btn">Create account</button>
+  </form>
+</div>
+{% endblock %}

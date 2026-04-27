@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Support - VulnShop{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:900px">
+  <h1>Support center</h1>
+  <form method="post">
+    <input name="subject" placeholder="Subject" required>
+    <input name="message" placeholder="Describe your issue" required>
+    <button class="btn">Create ticket</button>
+  </form>
+
+  <h3>Your tickets</h3>
+  <table class="table">
+    <tr><th>ID</th><th>Subject</th><th>Status</th><th>Created</th></tr>
+    {% for t in tickets %}
+    <tr><td>#{{t.id}}</td><td>{{t.subject}}</td><td>{{t.status}}</td><td>{{t.created_at}}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Supplier XML Import - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Supplier XML import</h1>
+  <p class="muted">Upload supplier feed to sync electronic products.</p>
+  <form method="post">
+    <textarea name="xml_payload" rows="8">{{ xml_payload }}</textarea>
+    <button class="btn">Parse feed</button>
+  </form>
+  {% if parsed %}
+    <pre>{{ parsed }}</pre>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Cart - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Your cart</h1>
+  {% if not items %}
+    <p class="muted">Your cart is empty.</p>
+  {% else %}
+    <table class="table">
+      <tr><th>Product</th><th>Price</th><th></th></tr>
+      {% for i in items %}
+        <tr>
+          <td>{{i.name}}</td>
+          <td>${{i.price}}</td>
+          <td><a class="btn danger" href="/cart/remove/{{i.id}}">Remove</a></td>
+        </tr>
+      {% endfor %}
+    </table>
+    <p class="price">Subtotal: ${{"%.2f"|format(subtotal)}}</p>
+    <form method="post" action="/cart/checkout"><button class="btn">Checkout</button></form>
+  {% endif %}
+</div>
+{% endblock %}
