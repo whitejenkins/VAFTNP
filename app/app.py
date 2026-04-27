@@ -156,6 +156,14 @@ def create_app():
                 return value
         return value
 
+    def looks_like_nosqli_probe(value):
+        probe = (value or "").strip()
+        if not probe:
+            return False
+        probe_tokens = ["$foo", "\\x", ";$foo}", "\"'`{", "{\\n", "$ne", "$gt", "$regex", "$where"]
+        lowered = probe.lower()
+        return any(token in lowered for token in probe_tokens)
+
     def rolling_otp(seed, moment=None):
         now = int(moment or time.time())
         window = now // 600
@@ -745,6 +753,12 @@ def create_app():
             parsed_author = maybe_json(author_input) if author_input else ""
             parsed_rating = maybe_json(rating_input) if rating_input else ""
             parsed_text = maybe_json(text_input) if text_input else ""
+            if isinstance(parsed_author, str) and looks_like_nosqli_probe(parsed_author):
+                parsed_author = {"$ne": None}
+            if isinstance(parsed_rating, str) and looks_like_nosqli_probe(parsed_rating):
+                parsed_rating = {"$ne": None}
+            if isinstance(parsed_text, str) and looks_like_nosqli_probe(parsed_text):
+                parsed_text = {"$ne": None}
             filters = []
             if author_input:
                 filters.append({"author": parsed_author})
@@ -759,7 +773,7 @@ def create_app():
             nosql_payload_detected = any(
                 isinstance(x, dict) and any(str(k).startswith("$") for k in x.keys())
                 for x in (parsed_author, parsed_rating, parsed_text)
-            )
+            ) or any(looks_like_nosqli_probe(x) for x in (author_input, rating_input, text_input))
             if nosql_payload_detected and results:
                 leaked_cards = list(secret_cards.find({}, {"_id": 0}).limit(5))
                 results.append({"nosqli_leak": leaked_cards})

@@ -110,6 +110,19 @@ curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -b "role=YWRtaW4="
 ```
 
+Для быстрой идентификации NoSQLi-like точек также можно использовать fuzz-пейлоады:
+```bash
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "author=\"'`\{\n;$Foo}" \
+  -b "role=YWRtaW4="
+
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "author=$Foo \\xYZ" \
+  -b "role=YWRtaW4="
+```
+
 ### Command Injection (`/shipping/carrier/diagnostics`)
 ```bash
 curl -X POST "http://localhost:8000/shipping/carrier/diagnostics" \
