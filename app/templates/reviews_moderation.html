@@ -4,16 +4,48 @@
 <div class="panel">
   <h1>Review moderation: {{ product.name }}</h1>
   <p class="muted">Filter incoming reviews before publishing.</p>
-  <form method="post">
-    <input name="author" placeholder='Author or JSON filter (e.g. {"$ne":null})' required>
-    <input name="rating" placeholder='Rating or JSON filter (e.g. {"$gt":0})' required>
+  <form method="post" style="margin-bottom:14px">
+    <input type="hidden" name="action" value="filter">
+    <input name="author" value="{{ filter_author }}" placeholder="Author (e.g. alice)">
+    <input name="rating" value="{{ filter_rating }}" placeholder="Rating (e.g. 5)">
+    <input name="text" value="{{ filter_text }}" placeholder="Review text contains...">
     <button class="btn">Apply filter</button>
   </form>
 
   <h3>Executed filter</h3>
-  <pre>{{ review_query }}</pre>
+  <pre style="white-space:pre-wrap;overflow:auto;max-width:100%">{{ review_query_pretty }}</pre>
 
   <h3>Results</h3>
   <pre>{{ review_results }}</pre>
+
+  <h3>All product reviews</h3>
+  <table class="table">
+    <tr><th>Author</th><th>Rating</th><th>Text</th><th>Status</th><th>Action</th></tr>
+    {% for r in moderation_items %}
+      <tr>
+        <td>{{ r.author }}</td>
+        <td>{{ r.rating }}/5</td>
+        <td>{{ r.text }}</td>
+        <td>{{ r.status }}</td>
+        <td>
+          <form method="post" style="display:inline">
+            <input type="hidden" name="review_id" value="{{ r._id }}">
+            <input type="hidden" name="action" value="approve">
+            <button class="btn">Approve</button>
+          </form>
+          <form method="post" style="display:inline">
+            <input type="hidden" name="review_id" value="{{ r._id }}">
+            <input type="hidden" name="action" value="reject">
+            <button class="btn secondary">Reject</button>
+          </form>
+          <form method="post" style="display:inline">
+            <input type="hidden" name="review_id" value="{{ r._id }}">
+            <input type="hidden" name="action" value="delete">
+            <button class="btn secondary">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
 </div>
 {% endblock %}
