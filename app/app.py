@@ -326,7 +326,80 @@ def create_app():
             users = cur.fetchall()
             cur.execute("SELECT id,user_id,total,created_at FROM orders ORDER BY id DESC LIMIT 20")
             orders = cur.fetchall()
-        return render_template("admin.html", users=users, orders=orders, cart_count=len(session.get("cart", [])))
+        pending_reviews = list(
+            reviews.find(
+                {"status": "pending"},
+                {"_id": 1, "product": 1, "author": 1, "rating": 1, "text": 1, "created_at": 1},
+            )
+            .sort("created_at", -1)
+            .limit(30)
+        )
+        return render_template(
+            "admin.html",
+            users=users,
+            orders=orders,
+            pending_reviews=pending_reviews,
+            cart_count=len(session.get("cart", [])),
+        )
+
+    @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_user_delete(user_id):
+        if user_id == session.get("user_id"):
+            flash("You cannot delete your own account from admin panel.", "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        flash("User deleted.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
+    @admin_required
+    def admin_user_promote(user_id):
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET role='admin' WHERE id=%s", (user_id,))
+        flash("User role promoted to admin.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/users/<int:user_id>/password", methods=["POST"])
+    @admin_required
+    def admin_user_password_change(user_id):
+        new_password = request.form.get("password", "").strip()
+        if has_empty(new_password):
+            flash("Password is required.", "error")
+            return redirect(url_for("admin_php"))
+        policy_issues = password_policy_errors(new_password)
+        if policy_issues:
+            flash("Password policy failed: " + ", ".join(policy_issues), "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET password=%s WHERE id=%s", (new_password, user_id))
+        flash("User password changed.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/reviews/<review_id>/approve", methods=["POST"])
+    @admin_required
+    def admin_review_approve(review_id):
+        try:
+            oid = ObjectId(review_id)
+        except InvalidId:
+            flash("Invalid review id.", "error")
+            return redirect(url_for("admin_php"))
+        reviews.update_one({"_id": oid}, {"$set": {"status": "approved"}})
+        flash("Review approved.", "success")
+        return redirect(url_for("admin_php"))
+
+    @app.route("/admin/reviews/<review_id>/reject", methods=["POST"])
+    @admin_required
+    def admin_review_reject(review_id):
+        try:
+            oid = ObjectId(review_id)
+        except InvalidId:
+            flash("Invalid review id.", "error")
+            return redirect(url_for("admin_php"))
+        reviews.update_one({"_id": oid}, {"$set": {"status": "rejected"}})
+        flash("Review rejected.", "success")
+        return redirect(url_for("admin_php"))
 
     @app.route("/auth/forgot", methods=["GET", "POST"])
     def forgot_password():
@@ -842,6 +915,11 @@ def create_app():
                 "/admin/pricing/rules/preview": {"post": {"summary": "Pricing rule preview", "responses": {"200": {"description": "ok"}}}},
                 "/admin/catalog/import/xml": {"post": {"summary": "Catalog XML import", "responses": {"200": {"description": "ok"}}}},
                 "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/delete": {"post": {"summary": "Delete user", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/promote": {"post": {"summary": "Promote user to admin", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/password": {"post": {"summary": "Change user password", "responses": {"200": {"description": "ok"}}}},
+                "/admin/reviews/{review_id}/approve": {"post": {"summary": "Approve pending review", "responses": {"200": {"description": "ok"}}}},
+                "/admin/reviews/{review_id}/reject": {"post": {"summary": "Reject pending review", "responses": {"200": {"description": "ok"}}}},
                 "/files/upload": {"post": {"summary": "Upload file", "responses": {"200": {"description": "ok"}}}},
                 "/swagger": {"get": {"summary": "Swagger UI", "responses": {"200": {"description": "ok"}}}},
             },

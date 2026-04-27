@@ -7,9 +7,28 @@
 
   <h2>Users</h2>
   <table class="table">
-    <tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th></tr>
+    <tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th></tr>
     {% for u in users %}
-    <tr><td>{{u.id}}</td><td>{{u.username}}</td><td>{{u.email}}</td><td>{{u.role}}</td></tr>
+    <tr>
+      <td>{{u.id}}</td>
+      <td>{{u.username}}</td>
+      <td>{{u.email}}</td>
+      <td>{{u.role}}</td>
+      <td>
+        {% if u.role != 'admin' %}
+        <form method="post" action="/admin/users/{{u.id}}/promote" style="display:inline">
+          <button class="btn">Promote</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/admin/users/{{u.id}}/delete" style="display:inline">
+          <button class="btn secondary">Delete</button>
+        </form>
+        <form method="post" action="/admin/users/{{u.id}}/password" style="display:inline-flex;gap:6px;align-items:center;margin-top:6px">
+          <input name="password" placeholder="New password" required>
+          <button class="btn secondary">Set password</button>
+        </form>
+      </td>
+    </tr>
     {% endfor %}
   </table>
 
@@ -18,6 +37,27 @@
     <tr><th>ID</th><th>User ID</th><th>Total</th><th>Created</th></tr>
     {% for o in orders %}
     <tr><td>{{o.id}}</td><td>{{o.user_id}}</td><td>{{o.total}}</td><td>{{o.created_at}}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Pending reviews approval</h2>
+  <table class="table">
+    <tr><th>Product</th><th>Author</th><th>Rating</th><th>Text</th><th>Action</th></tr>
+    {% for r in pending_reviews %}
+    <tr>
+      <td>{{ r.product }}</td>
+      <td>{{ r.author }}</td>
+      <td>{{ r.rating }}/5</td>
+      <td>{{ r.text }}</td>
+      <td>
+        <form method="post" action="/admin/reviews/{{r._id}}/approve" style="display:inline">
+          <button class="btn">Approve</button>
+        </form>
+        <form method="post" action="/admin/reviews/{{r._id}}/reject" style="display:inline">
+          <button class="btn secondary">Reject</button>
+        </form>
+      </td>
+    </tr>
     {% endfor %}
   </table>
 </div>
