@@ -12,11 +12,15 @@
     <button class="btn">Apply filter</button>
   </form>
 
-  <h3>Executed filter</h3>
-  <pre style="white-space:pre-wrap;overflow:auto;max-width:100%">{{ review_query_pretty }}</pre>
+  <div class="panel" style="margin-top:10px">
+    <h3>Executed filter</h3>
+    <pre style="white-space:pre-wrap;overflow-x:auto;max-width:100%;word-break:break-word">{{ review_query_pretty }}</pre>
+  </div>
 
-  <h3>Results</h3>
-  <pre>{{ review_results }}</pre>
+  <div class="panel" style="margin-top:10px">
+    <h3>Results</h3>
+    <pre style="white-space:pre-wrap;overflow-x:auto;max-width:100%;word-break:break-word">{{ review_results }}</pre>
+  </div>
 
   <h3>All product reviews</h3>
   <table class="table">

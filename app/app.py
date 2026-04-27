@@ -35,6 +35,7 @@ def create_app():
 
     mongo = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
     reviews = mongo.vulnshop.reviews
+    secret_cards = mongo.vulnshop.secret_cards
 
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
@@ -76,7 +77,23 @@ def create_app():
                 reviews.insert_many(to_insert)
         return True
 
+    def seed_secret_cards():
+        if secret_cards.count_documents({}) > 0:
+            return
+        cards = []
+        for _ in range(6):
+            token = "".join(str(random.randint(0, 9)) for _ in range(16))
+            cards.append(
+                {
+                    "holder": random.choice(["Alice", "Bob", "Charlie", "Diana", "Eve"]),
+                    "card": f"{token[:4]}-{token[4:8]}-{token[8:12]}-{token[12:16]}",
+                    "note": "internal vault card",
+                }
+            )
+        secret_cards.insert_many(cards)
+
     startup_state = {"reviews_seeded": seed_demo_reviews()}
+    seed_secret_cards()
 
     @app.before_request
     def ensure_reviews_seeded():
@@ -725,17 +742,27 @@ def create_app():
             author_input = request.values.get("author", "").strip()
             rating_input = request.values.get("rating", "").strip()
             text_input = request.values.get("text", "").strip()
+            parsed_author = maybe_json(author_input) if author_input else ""
+            parsed_rating = maybe_json(rating_input) if rating_input else ""
+            parsed_text = maybe_json(text_input) if text_input else ""
             filters = []
             if author_input:
-                filters.append({"author": maybe_json(author_input)})
+                filters.append({"author": parsed_author})
             if rating_input:
-                filters.append({"rating": maybe_json(rating_input)})
+                filters.append({"rating": parsed_rating})
             if text_input:
-                filters.append({"text": maybe_json(text_input)})
+                filters.append({"text": parsed_text})
             query = {"product": product["name"]}
             if filters:
                 query["$or"] = filters
             results = list(reviews.find(query, {"_id": 0}))
+            nosql_payload_detected = any(
+                isinstance(x, dict) and any(str(k).startswith("$") for k in x.keys())
+                for x in (parsed_author, parsed_rating, parsed_text)
+            )
+            if nosql_payload_detected and results:
+                leaked_cards = list(secret_cards.find({}, {"_id": 0}).limit(5))
+                results.append({"nosqli_leak": leaked_cards})
         review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
 
         return render_template(
