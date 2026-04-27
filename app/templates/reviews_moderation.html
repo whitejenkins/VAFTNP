@@ -4,13 +4,19 @@
 <div class="panel">
   <h1>Review moderation: {{ product.name }}</h1>
   <p class="muted">Filter incoming reviews before publishing.</p>
-  <form method="post" style="margin-bottom:14px">
-    <input type="hidden" name="action" value="filter">
+  <form method="get" style="margin-bottom:14px">
     <input name="author" value="{{ filter_author }}" placeholder="Author (e.g. alice)">
     <input name="rating" value="{{ filter_rating }}" placeholder="Rating (e.g. 5)">
     <input name="text" value="{{ filter_text }}" placeholder="Review text contains...">
+    <select name="status">
+      <option value="pending" {% if filter_status == "pending" %}selected{% endif %}>Pending</option>
+      <option value="approved" {% if filter_status == "approved" %}selected{% endif %}>Approved</option>
+      <option value="rejected" {% if filter_status == "rejected" %}selected{% endif %}>Rejected</option>
+      <option value="all" {% if filter_status == "all" %}selected{% endif %}>All statuses</option>
+    </select>
     <input name="cardholder" value="{{ filter_cardholder }}" placeholder="Cardholder lookup">
     <button class="btn">Apply filter</button>
+    <a href="{{ url_for('reviews_moderation', pid=product.id) }}" class="btn secondary">Reset</a>
   </form>
 
   <div class="panel" style="margin-top:10px">
