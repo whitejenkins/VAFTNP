@@ -17,7 +17,7 @@ from bson.errors import InvalidId
 from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
-from pymysql.err import IntegrityError
+from pymysql.err import IntegrityError, OperationalError
 
 
 def create_app():
@@ -49,9 +49,12 @@ def create_app():
             "I would buy this again.",
             "Could be better, but still decent.",
         ]
-        with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,name FROM products ORDER BY id LIMIT 24")
-            products = cur.fetchall()
+        try:
+            with mysql_conn().cursor() as cur:
+                cur.execute("SELECT id,name FROM products ORDER BY id LIMIT 24")
+                products = cur.fetchall()
+        except OperationalError:
+            return False
         for product in products:
             existing = reviews.count_documents({"product_id": product["id"]})
             if existing >= 3:
@@ -71,8 +74,15 @@ def create_app():
                 )
             if to_insert:
                 reviews.insert_many(to_insert)
+        return True
 
-    seed_demo_reviews()
+    startup_state = {"reviews_seeded": seed_demo_reviews()}
+
+    @app.before_request
+    def ensure_reviews_seeded():
+        if startup_state["reviews_seeded"]:
+            return
+        startup_state["reviews_seeded"] = seed_demo_reviews()
 
     def login_required(fn):
         @wraps(fn)
