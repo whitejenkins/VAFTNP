@@ -199,8 +199,6 @@ def create_app():
             if user["password"] != password:
                 flash("Wrong password.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 401
-            if username == "alice" and password == "Hightower7":
-                flash("Default credentials used.", "info")
             user_otp = (user.get("twofa_secret") or "").strip()
             if user_otp:
                 session["pre_2fa_user"] = user["id"]
