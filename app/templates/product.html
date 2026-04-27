@@ -19,4 +19,35 @@
     {% endfor %}
   </div>
 </div>
+
+<div class="panel" style="margin-top:16px">
+  <h3>Customer reviews</h3>
+  {% if avg_rating %}
+    <p class="muted">Average rating: <strong>{{ avg_rating }}/5</strong></p>
+  {% endif %}
+
+  {% if session.get("user_id") %}
+  <form method="post" action="/product/{{ product.id }}/reviews" style="margin-bottom:12px">
+    <label>Leave your review</label>
+    <div style="display:flex;gap:10px;margin-top:8px;align-items:flex-start">
+      <input name="rating" type="number" min="1" max="5" placeholder="Rating 1..5" required style="max-width:160px">
+      <textarea name="text" rows="2" placeholder="Share your experience" required></textarea>
+      <button class="btn">Submit</button>
+    </div>
+  </form>
+  {% else %}
+    <p class="muted">Log in to write a review.</p>
+  {% endif %}
+
+  {% if reviews %}
+    {% for review in reviews %}
+      <div class="panel" style="margin-top:8px">
+        <strong>{{ review.author }}</strong> — {{ review.rating }}/5
+        <p style="margin:8px 0 0">{{ review.text }}</p>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No published reviews yet.</p>
+  {% endif %}
+</div>
 {% endblock %}
