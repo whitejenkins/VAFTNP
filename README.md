@@ -31,23 +31,22 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Out-of-band: можно тренировать через MySQL-функции/запросы, выполняемые в SQLi точках (зависит от среды и прав DB).
 
 ### NoSQL Injection
-- `POST /api/reviews/search` (JSON фильтр)
+- `GET|POST /product/<pid>/reviews/moderation` (фильтр модерации отзывов с JSON-like значениями)
 
 ### Command Injection
-- `GET /tools/ping?host=...`
+- `GET|POST /shipping/carrier/diagnostics` (параметр `host`)
 
 ### Code Injection
-- `POST /admin/eval` (параметр `expr`)
+- `GET|POST /admin/pricing/rules/preview` (параметр `expr`)
 
 ### Host Header Injection
-- `POST /auth/forgot` (сброс использует `request.host`)
 - `GET /admin.php` для admin-пользователя: доступ к панели завязан на `X-Forwarded-Host` (ожидается `176.105.200.130`, можно подменить заголовок)
 
 ### XML Injection / XXE
-- `POST /api/import-xml`
+- `GET|POST /admin/catalog/import/xml` (payload в поле `xml_payload`)
 
 ### SSTI
-- `GET|POST /promo/preview`
+- `GET|POST /admin/marketing/email/preview` (поле `tpl`)
 
 ### Auth/Session уязвимости
 - Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
@@ -70,8 +69,9 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 
 ## Реалистичный функционал магазина
 - Каталог, карточка товара, корзина, checkout.
-- Личный кабинет, редактирование профиля.
+- Личный кабинет, редактирование профиля, адресная книга.
 - Wishlist и центр поддержки (тикеты).
+- Эндпоинты магазина: бренды (`/shop/brands`), подборки скидок (`/shop/deals`), диагностика доставки (`/shipping/carrier/diagnostics`), модерация отзывов (`/product/<pid>/reviews/moderation`), маркетинговый и каталог-импортные админ-процессы.
 - Часть маршрутов реализована безопаснее, часть — намеренно уязвима для учебы.
 
 ## Seed users

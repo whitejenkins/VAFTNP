@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Pricing Rule Preview - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Pricing rule preview</h1>
+  <p class="muted">Evaluate dynamic discount formulas for electronics catalog campaigns.</p>
+  <form method="post">
+    <input name="expr" value="{{ expr }}" required>
+    <button class="btn">Evaluate</button>
+  </form>
+  {% if result %}
+    <pre>{{ result }}</pre>
+  {% endif %}
+</div>
+{% endblock %}

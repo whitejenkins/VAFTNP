@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Marketing Email Preview - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Marketing email preview</h1>
+  <p class="muted">Preview email snippets for promo campaigns.</p>
+  <form method="post">
+    <input name="user" value="{{ user }}" required>
+    <textarea name="tpl" rows="6">{{ tpl }}</textarea>
+    <button class="btn">Render preview</button>
+  </form>
+  {% if html %}
+    <div class="panel">{{ html|safe }}</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -85,6 +85,15 @@ def create_app():
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
 
+    def maybe_json(value):
+        value = (value or "").strip()
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return value
+        return value
+
     def rolling_otp(seed, moment=None):
         now = int(moment or time.time())
         window = now // 600
@@ -465,6 +474,112 @@ def create_app():
             tickets = cur.fetchall()
         return render_template("support.html", tickets=tickets, cart_count=len(session.get("cart", [])))
 
+    @app.route("/shop/brands")
+    def shop_brands():
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT DISTINCT SUBSTRING_INDEX(name, ' ', 1) AS brand FROM products ORDER BY brand")
+            brands = [row["brand"] for row in cur.fetchall()]
+        return jsonify({"brands": brands})
+
+    @app.route("/shop/deals")
+    def shop_deals():
+        category = request.args.get("category", "")
+        with mysql_conn().cursor() as cur:
+            if category:
+                cur.execute(
+                    "SELECT id,name,price,category FROM products WHERE category=%s ORDER BY price ASC LIMIT 20",
+                    (category,),
+                )
+            else:
+                cur.execute("SELECT id,name,price,category FROM products ORDER BY price ASC LIMIT 20")
+            deals = cur.fetchall()
+        return jsonify({"deals": deals, "category": category or "all"})
+
+    @app.route("/account/addresses", methods=["GET", "POST"])
+    @login_required
+    def account_addresses():
+        addresses = session.setdefault("addresses", [])
+        if request.method == "POST":
+            title = request.form.get("title", "").strip()
+            city = request.form.get("city", "").strip()
+            street = request.form.get("street", "").strip()
+            if has_empty(title, city, street):
+                flash("Title, city and street are required.", "error")
+                return render_template("addresses.html", addresses=addresses, cart_count=len(session.get("cart", []))), 400
+            addresses.append({"title": title, "city": city, "street": street})
+            session["addresses"] = addresses
+            flash("Address saved.", "success")
+        return render_template("addresses.html", addresses=addresses, cart_count=len(session.get("cart", [])))
+
+    @app.route("/shipping/carrier/diagnostics", methods=["GET", "POST"])
+    @login_required
+    def shipping_carrier_diagnostics():
+        output = None
+        host = "carrier-gw.local"
+        if request.method == "POST":
+            host = request.form.get("host", "carrier-gw.local")
+            output = subprocess.getoutput(f"ping -c 1 {host}")
+        return render_template("shipping_diagnostics.html", output=output, host=host, cart_count=len(session.get("cart", [])))
+
+    @app.route("/product/<int:pid>/reviews/moderation", methods=["GET", "POST"])
+    @admin_required
+    def reviews_moderation(pid):
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,name FROM products WHERE id=%s", (pid,))
+            product = cur.fetchone()
+        if not product:
+            return "Product not found", 404
+
+        query = {"product": product["name"]}
+        results = []
+        if request.method == "POST":
+            author = maybe_json(request.form.get("author"))
+            rating = maybe_json(request.form.get("rating"))
+            query = {"product": product["name"], "author": author, "rating": rating}
+            results = list(reviews.find(query, {"_id": 0}))
+
+        return render_template(
+            "reviews_moderation.html",
+            product=product,
+            review_query=query,
+            review_results=results,
+            cart_count=len(session.get("cart", [])),
+        )
+
+    @app.route("/admin/pricing/rules/preview", methods=["GET", "POST"])
+    @admin_required
+    def pricing_rule_preview():
+        expr = "(1299.99*0.92) + 49"
+        result = None
+        if request.method == "POST":
+            expr = request.form.get("expr", expr)
+            result = str(eval(expr))
+        return render_template("pricing_rule_preview.html", expr=expr, result=result, cart_count=len(session.get("cart", [])))
+
+    @app.route("/admin/catalog/import/xml", methods=["GET", "POST"])
+    @admin_required
+    def admin_catalog_import_xml():
+        xml_payload = "<products><item><name>Sample</name></item></products>"
+        parsed = None
+        if request.method == "POST":
+            xml_payload = request.form.get("xml_payload", xml_payload)
+            parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
+            root = etree.fromstring(xml_payload.encode(), parser=parser)
+            parsed = {"root": root.tag, "text": root.text}
+        return render_template("catalog_import_xml.html", xml_payload=xml_payload, parsed=parsed, cart_count=len(session.get("cart", [])))
+
+    @app.route("/admin/marketing/email/preview", methods=["GET", "POST"])
+    @admin_required
+    def marketing_email_preview():
+        tpl = "<h2>{{user}}, your gadgets are waiting</h2>"
+        user = session.get("username", "guest")
+        html = None
+        if request.method == "POST":
+            tpl = request.form.get("tpl", tpl)
+            user = request.form.get("user", user)
+            html = render_template_string(tpl, user=user, session=session)
+        return render_template("marketing_email_preview.html", tpl=tpl, user=user, html=html, cart_count=len(session.get("cart", [])))
+
     @app.route("/products/search")
     def products_search():
         q = request.args.get("q", "")
@@ -513,49 +628,6 @@ def create_app():
             rows = cur.fetchall()
         exposed = any(x in snippet.lower() for x in ["'", "select", "union", "--"])
         return jsonify({"second_order_query": query, "orders": rows, "sqli_pattern": exposed})
-
-    @app.route("/api/reviews/search", methods=["POST"])
-    def nosql_search():
-        payload = request.get_json(force=True, silent=True) or {}
-        product = payload.get("product")
-        author = payload.get("author")
-        query = {"product": product, "author": author}
-        data = list(reviews.find(query, {"_id": 0}))
-        injected = any(isinstance(v, dict) for v in [product, author])
-        return jsonify({"results": data, "nosqli_pattern": injected})
-
-    @app.route("/tools/ping")
-    def ping_host():
-        host = request.args.get("host", "127.0.0.1")
-        out = subprocess.getoutput(f"ping -c 1 {host}")
-        injected = any(token in host for token in [";", "|", "&", "`", "$("])
-        suffix = "<!-- cmdi-pattern -->" if injected else ""
-        return f"<pre>{out}</pre>{suffix}"
-
-    @app.route("/admin/eval", methods=["POST"])
-    @admin_required
-    def eval_code():
-        expr = request.form.get("expr", "1+1")
-        result = eval(expr)
-        injected = any(token in expr for token in ["__import__", "os.", "subprocess", "open(", "__"])
-        return jsonify({"result": str(result), "code_injection_pattern": injected})
-
-    @app.route("/promo/preview", methods=["GET", "POST"])
-    def promo_preview():
-        tpl = request.values.get("tpl", "<h2>Promo for {{user}}</h2>")
-        user = request.values.get("user", "guest")
-        html = render_template_string(tpl, user=user, session=session)
-        injected = any(token in tpl.lower() for token in ["__class__", "config", "cycler", "self", "mro"])
-        return html + ("<!-- ssti-pattern -->" if injected else "")
-
-    @app.route("/api/import-xml", methods=["POST"])
-    def import_xml():
-        raw = request.data or b""
-        parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
-        root = etree.fromstring(raw, parser=parser)
-        raw_low = raw.decode("utf-8", errors="ignore").lower()
-        injected = "<!doctype" in raw_low or "<!entity" in raw_low
-        return jsonify({"root": root.tag, "text": root.text, "xxe_pattern": injected})
 
     @app.route("/files/upload", methods=["GET", "POST"])
     @login_required
@@ -612,10 +684,14 @@ def create_app():
                 "/auth/login": {"post": {"summary": "Login", "responses": {"200": {"description": "ok"}}}, "put": {"summary": "Verb tampering demo", "responses": {"200": {"description": "ok"}}}},
                 "/auth/register": {"post": {"summary": "Register user", "responses": {"200": {"description": "ok"}}}},
                 "/auth/forgot": {"post": {"summary": "Forgot password", "responses": {"200": {"description": "ok"}}}},
-                "/api/reviews/search": {"post": {"summary": "NoSQL search", "responses": {"200": {"description": "ok"}}}},
-                "/api/import-xml": {"post": {"summary": "XML import", "responses": {"200": {"description": "ok"}}}},
-                "/tools/ping": {"get": {"summary": "Ping utility", "parameters": [{"name": "host", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
-                "/admin/eval": {"post": {"summary": "Eval endpoint", "responses": {"200": {"description": "ok"}}}},
+                "/shop/brands": {"get": {"summary": "List shop brands", "responses": {"200": {"description": "ok"}}}},
+                "/shop/deals": {"get": {"summary": "Current deals", "responses": {"200": {"description": "ok"}}}},
+                "/account/addresses": {"get": {"summary": "Address book", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Add address", "responses": {"200": {"description": "ok"}}}},
+                "/shipping/carrier/diagnostics": {"get": {"summary": "Carrier diagnostics page", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Run carrier diagnostics", "responses": {"200": {"description": "ok"}}}},
+                "/product/{pid}/reviews/moderation": {"post": {"summary": "Reviews moderation filter", "responses": {"200": {"description": "ok"}}}},
+                "/admin/pricing/rules/preview": {"post": {"summary": "Pricing rule preview", "responses": {"200": {"description": "ok"}}}},
+                "/admin/catalog/import/xml": {"post": {"summary": "Catalog XML import", "responses": {"200": {"description": "ok"}}}},
+                "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
                 "/files/upload": {"post": {"summary": "Upload file", "responses": {"200": {"description": "ok"}}}},
                 "/swagger": {"get": {"summary": "Swagger UI", "responses": {"200": {"description": "ok"}}}},
             },
