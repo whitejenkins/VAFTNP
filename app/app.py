@@ -808,7 +808,7 @@ def create_app():
         rating_input = request.values.get("rating", "").strip()
         text_input = request.values.get("text", "").strip()
         status_input = request.values.get("status", "pending").strip().lower() or "pending"
-        card_number_input = request.values.get("card_number", "").strip()
+        cardholder_input = request.values.get("cardholder", "").strip()
         card_results = []
         filter_errors = []
 
@@ -872,7 +872,7 @@ def create_app():
                 filter_rating=rating_input,
                 filter_text=text_input,
                 filter_status=status_input,
-                filter_card_number=card_number_input,
+                filter_cardholder=cardholder_input,
                 search_results_pretty=search_results_pretty,
                 moderation_items=moderation_items,
                 cart_count=len(session.get("cart", [])),
@@ -885,14 +885,14 @@ def create_app():
             .limit(40)
         )
 
-        if card_number_input:
-            parsed_card_number = parse_text_filter(card_number_input, contains=True)
-            if parsed_card_number is not None:
+        if cardholder_input:
+            parsed_cardholder = parse_text_filter(cardholder_input, contains=True)
+            if parsed_cardholder is not None:
                 card_query = {}
-                apply_filter(card_query, "card_number", parsed_card_number)
+                apply_filter(card_query, "cardholder", parsed_cardholder)
                 card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
             else:
-                flash("Card number filter is invalid.", "error")
+                flash("Cardholder filter is invalid.", "error")
 
         review_query_pretty = json.dumps(review_query, ensure_ascii=False, indent=2, default=str)
         search_results_pretty = json.dumps(
@@ -912,7 +912,7 @@ def create_app():
             filter_rating=rating_input,
             filter_text=text_input,
             filter_status=status_input,
-            filter_card_number=card_number_input,
+            filter_cardholder=cardholder_input,
             search_results_pretty=search_results_pretty,
             moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
