@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Review Moderation - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Review moderation: {{ product.name }}</h1>
+  <p class="muted">Filter incoming reviews before publishing.</p>
+  <form method="post">
+    <input name="author" placeholder='Author or JSON filter (e.g. {"$ne":null})' required>
+    <input name="rating" placeholder='Rating or JSON filter (e.g. {"$gt":0})' required>
+    <button class="btn">Apply filter</button>
+  </form>
+
+  <h3>Executed filter</h3>
+  <pre>{{ review_query }}</pre>
+
+  <h3>Results</h3>
+  <pre>{{ review_results }}</pre>
+</div>
+{% endblock %}

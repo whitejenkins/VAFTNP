@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Carrier Diagnostics - VulnShop{% endblock %}
+{% block content %}
+<div class="panel">
+  <h1>Carrier gateway diagnostics</h1>
+  <p class="muted">Utility for checking connectivity with shipping partners.</p>
+  <form method="post">
+    <input name="host" value="{{ host }}" required>
+    <button class="btn">Run ping</button>
+  </form>
+  {% if output %}
+    <pre>{{ output }}</pre>
+  {% endif %}
+</div>
+{% endblock %}
