@@ -749,12 +749,21 @@ def create_app():
         if not product:
             return "Product not found", 404
 
+        def mongo_filter_from_input(raw, *, contains=False, numeric=False):
+            if not raw:
+                return None
+            parsed = maybe_json(raw)
+            if isinstance(parsed, dict):
+                return parsed
+            if numeric and str(parsed).isdigit():
+                return int(parsed)
+            if contains and isinstance(parsed, str):
+                return {"$regex": re.escape(parsed), "$options": "i"}
+            return parsed
+
         query = {"product": product["name"]}
-        moderation_items = list(
-            reviews.find({"product_id": pid}, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
-            .sort("created_at", -1)
-            .limit(40)
-        )
+        moderation_query = {"product_id": pid}
+        moderation_items = []
         results = []
         author_input = ""
         rating_input = ""
@@ -784,23 +793,26 @@ def create_app():
             rating_input = request.values.get("rating", "").strip()
             text_input = request.values.get("text", "").strip()
             cardholder_input = request.values.get("cardholder", "").strip()
-            parsed_author = maybe_json(author_input) if author_input else ""
-            parsed_rating = maybe_json(rating_input) if rating_input else ""
-            parsed_text = maybe_json(text_input) if text_input else ""
+            parsed_author = mongo_filter_from_input(author_input, contains=True)
+            parsed_rating = mongo_filter_from_input(rating_input, numeric=True)
+            parsed_text = mongo_filter_from_input(text_input, contains=True)
             filters = []
-            if author_input:
+            if parsed_author is not None:
                 filters.append({"author": parsed_author})
-            if rating_input:
+            if parsed_rating is not None:
                 filters.append({"rating": parsed_rating})
-            if text_input:
+            if parsed_text is not None:
                 filters.append({"text": parsed_text})
             query = {"product": product["name"]}
             if filters:
                 query["$or"] = filters
             results = list(reviews.find(query, {"_id": 0}))
+            moderation_query = {"product_id": pid}
+            if filters:
+                moderation_query["$or"] = filters
             card_query = {}
             if cardholder_input:
-                parsed_cardholder = maybe_json(cardholder_input)
+                parsed_cardholder = mongo_filter_from_input(cardholder_input, contains=True)
                 if isinstance(parsed_cardholder, dict):
                     card_ops = set(parsed_cardholder.keys())
                     field_level_ops = {"$ne", "$in", "$regex"}
@@ -820,9 +832,14 @@ def create_app():
                 search_results_pretty = json.dumps(
                     {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
                     ensure_ascii=False,
-                indent=2,
-                default=str,
-            )
+                    indent=2,
+                    default=str,
+                )
+        moderation_items = list(
+            reviews.find(moderation_query, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
+            .sort("created_at", -1)
+            .limit(40)
+        )
         review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
 
         return render_template(
