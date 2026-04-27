@@ -6,11 +6,14 @@ import re
 import hashlib
 import base64
 import binascii
+import random
 from functools import wraps
 from urllib.parse import urlparse
 
 import pymysql
 import requests
+from bson.objectid import ObjectId
+from bson.errors import InvalidId
 from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
@@ -32,14 +35,44 @@ def create_app():
 
     mongo = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
     reviews = mongo.vulnshop.reviews
-    if reviews.count_documents({}) == 0:
-        reviews.insert_many([
-            {"product": "Gaming Mouse", "author": "alice", "rating": 5, "text": "nice"},
-            {"product": "Coffee Mug", "author": "bob", "rating": 3, "text": "ok"},
-        ])
 
     def mysql_conn():
         return pymysql.connect(**mysql_conf)
+
+    def seed_demo_reviews():
+        demo_authors = ["alice", "bob", "charlie", "diana", "eve", "frank"]
+        demo_texts = [
+            "Great quality for the price.",
+            "Works exactly as expected.",
+            "Packaging was excellent and shipping was fast.",
+            "Good choice for everyday usage.",
+            "I would buy this again.",
+            "Could be better, but still decent.",
+        ]
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,name FROM products ORDER BY id LIMIT 24")
+            products = cur.fetchall()
+        for product in products:
+            existing = reviews.count_documents({"product_id": product["id"]})
+            if existing >= 3:
+                continue
+            to_insert = []
+            for _ in range(3 - existing):
+                to_insert.append(
+                    {
+                        "product_id": product["id"],
+                        "product": product["name"],
+                        "author": random.choice(demo_authors),
+                        "rating": random.randint(3, 5),
+                        "text": random.choice(demo_texts),
+                        "status": random.choice(["approved", "approved", "pending"]),
+                        "created_at": int(time.time()) - random.randint(0, 86400 * 60),
+                    }
+                )
+            if to_insert:
+                reviews.insert_many(to_insert)
+
+    seed_demo_reviews()
 
     def login_required(fn):
         @wraps(fn)
@@ -364,7 +397,52 @@ def create_app():
             related = cur.fetchall()
         if not product:
             return "Product not found", 404
-        return render_template("product.html", product=product, related=related, cart_count=len(session.get("cart", [])))
+        published_reviews = list(
+            reviews.find({"product_id": pid, "status": "approved"}, {"_id": 0})
+            .sort("created_at", -1)
+            .limit(15)
+        )
+        avg_rating = round(sum(r["rating"] for r in published_reviews) / len(published_reviews), 2) if published_reviews else None
+        return render_template(
+            "product.html",
+            product=product,
+            related=related,
+            reviews=published_reviews,
+            avg_rating=avg_rating,
+            cart_count=len(session.get("cart", [])),
+        )
+
+    @app.route("/product/<int:pid>/reviews", methods=["POST"])
+    @login_required
+    def create_review(pid):
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,name FROM products WHERE id=%s", (pid,))
+            product = cur.fetchone()
+        if not product:
+            return "Product not found", 404
+
+        rating_raw = request.form.get("rating", "").strip()
+        text = request.form.get("text", "").strip()
+        if has_empty(rating_raw, text):
+            flash("Rating and review text are required.", "error")
+            return redirect(url_for("product_card", pid=pid))
+        if not rating_raw.isdigit() or not 1 <= int(rating_raw) <= 5:
+            flash("Rating must be an integer from 1 to 5.", "error")
+            return redirect(url_for("product_card", pid=pid))
+
+        reviews.insert_one(
+            {
+                "product_id": pid,
+                "product": product["name"],
+                "author": session.get("username", "guest"),
+                "rating": int(rating_raw),
+                "text": text,
+                "status": "pending",
+                "created_at": int(time.time()),
+            }
+        )
+        flash("Review submitted and sent for moderation.", "success")
+        return redirect(url_for("product_card", pid=pid))
 
     @app.route("/cart")
     def cart():
@@ -529,8 +607,29 @@ def create_app():
             return "Product not found", 404
 
         query = {"product": product["name"]}
+        moderation_items = list(
+            reviews.find({"product_id": pid}, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
+            .sort("created_at", -1)
+            .limit(40)
+        )
         results = []
         if request.method == "POST":
+            action = request.form.get("action", "filter")
+            if action in {"approve", "reject", "delete"}:
+                review_id = request.form.get("review_id", "").strip()
+                if review_id:
+                    try:
+                        oid = ObjectId(review_id)
+                    except InvalidId:
+                        flash("Invalid review id.", "error")
+                        return redirect(url_for("reviews_moderation", pid=pid))
+                    if action == "delete":
+                        reviews.delete_one({"_id": oid, "product_id": pid})
+                    else:
+                        next_status = "approved" if action == "approve" else "rejected"
+                        reviews.update_one({"_id": oid, "product_id": pid}, {"$set": {"status": next_status}})
+                    flash("Review moderation action applied.", "success")
+                return redirect(url_for("reviews_moderation", pid=pid))
             author = maybe_json(request.form.get("author"))
             rating = maybe_json(request.form.get("rating"))
             query = {"product": product["name"], "author": author, "rating": rating}
@@ -541,6 +640,7 @@ def create_app():
             product=product,
             review_query=query,
             review_results=results,
+            moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
         )
 
@@ -549,22 +649,48 @@ def create_app():
     def pricing_rule_preview():
         expr = "(1299.99*0.92) + 49"
         result = None
+        saved_rules = session.setdefault("pricing_rules", [])
         if request.method == "POST":
             expr = request.form.get("expr", expr)
             result = str(eval(expr))
-        return render_template("pricing_rule_preview.html", expr=expr, result=result, cart_count=len(session.get("cart", [])))
+            if request.form.get("action") == "save":
+                title = request.form.get("title", "").strip() or f"Rule {len(saved_rules) + 1}"
+                saved_rules.insert(0, {"title": title, "expr": expr, "result": result})
+                session["pricing_rules"] = saved_rules[:20]
+                flash("Rule saved to draft list.", "success")
+        return render_template(
+            "pricing_rule_preview.html",
+            expr=expr,
+            result=result,
+            saved_rules=saved_rules,
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/admin/catalog/import/xml", methods=["GET", "POST"])
     @admin_required
     def admin_catalog_import_xml():
         xml_payload = "<products><item><name>Sample</name></item></products>"
         parsed = None
+        imported_items = []
         if request.method == "POST":
             xml_payload = request.form.get("xml_payload", xml_payload)
             parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
             root = etree.fromstring(xml_payload.encode(), parser=parser)
             parsed = {"root": root.tag, "text": root.text}
-        return render_template("catalog_import_xml.html", xml_payload=xml_payload, parsed=parsed, cart_count=len(session.get("cart", [])))
+            for item in root.findall(".//item"):
+                imported_items.append(
+                    {
+                        "name": (item.findtext("name") or "").strip() or "Untitled",
+                        "price": (item.findtext("price") or "0").strip(),
+                    }
+                )
+        return render_template(
+            "catalog_import_xml.html",
+            xml_payload=xml_payload,
+            parsed=parsed,
+            imported_items=imported_items,
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/admin/marketing/email/preview", methods=["GET", "POST"])
     @admin_required
@@ -572,11 +698,24 @@ def create_app():
         tpl = "<h2>{{user}}, your gadgets are waiting</h2>"
         user = session.get("username", "guest")
         html = None
+        drafts = session.setdefault("campaign_drafts", [])
         if request.method == "POST":
             tpl = request.form.get("tpl", tpl)
             user = request.form.get("user", user)
             html = render_template_string(tpl, user=user, session=session)
-        return render_template("marketing_email_preview.html", tpl=tpl, user=user, html=html, cart_count=len(session.get("cart", [])))
+            if request.form.get("action") == "save":
+                subject = request.form.get("subject", "").strip() or f"Campaign {len(drafts) + 1}"
+                drafts.insert(0, {"subject": subject, "user": user, "tpl": tpl})
+                session["campaign_drafts"] = drafts[:20]
+                flash("Campaign draft saved.", "success")
+        return render_template(
+            "marketing_email_preview.html",
+            tpl=tpl,
+            user=user,
+            html=html,
+            drafts=drafts,
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/products/search")
     def products_search():
@@ -686,7 +825,8 @@ def create_app():
                 "/shop/deals": {"get": {"summary": "Current deals", "responses": {"200": {"description": "ok"}}}},
                 "/account/addresses": {"get": {"summary": "Address book", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Add address", "responses": {"200": {"description": "ok"}}}},
                 "/shipping/carrier/diagnostics": {"get": {"summary": "Carrier diagnostics page", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Run carrier diagnostics", "responses": {"200": {"description": "ok"}}}},
-                "/product/{pid}/reviews/moderation": {"post": {"summary": "Reviews moderation filter", "responses": {"200": {"description": "ok"}}}},
+                "/product/{pid}/reviews": {"post": {"summary": "Create product review", "responses": {"200": {"description": "ok"}}}},
+                "/product/{pid}/reviews/moderation": {"get": {"summary": "Reviews moderation dashboard", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Reviews moderation actions/filter", "responses": {"200": {"description": "ok"}}}},
                 "/admin/pricing/rules/preview": {"post": {"summary": "Pricing rule preview", "responses": {"200": {"description": "ok"}}}},
                 "/admin/catalog/import/xml": {"post": {"summary": "Catalog XML import", "responses": {"200": {"description": "ok"}}}},
                 "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
