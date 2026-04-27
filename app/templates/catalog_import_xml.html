@@ -11,5 +11,14 @@
   {% if parsed %}
     <pre>{{ parsed }}</pre>
   {% endif %}
+  {% if imported_items %}
+    <h3>Imported positions preview</h3>
+    <table class="table">
+      <tr><th>Name</th><th>Price</th></tr>
+      {% for item in imported_items %}
+      <tr><td>{{ item.name }}</td><td>{{ item.price }}</td></tr>
+      {% endfor %}
+    </table>
+  {% endif %}
 </div>
 {% endblock %}

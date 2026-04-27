@@ -17,7 +17,14 @@
       {% endfor %}
     </table>
     <p class="price">Subtotal: ${{"%.2f"|format(subtotal)}}</p>
-    <form method="post" action="/cart/checkout"><button class="btn">Checkout</button></form>
+    <form method="post" action="/cart/checkout">
+      <h3>Payment card</h3>
+      <input name="cardholder" placeholder="Cardholder name" required>
+      <input name="card_number" placeholder="Card number" required>
+      <input name="exp" placeholder="MM/YY" required>
+      <input name="cvv" placeholder="CVV" required>
+      <button class="btn">Checkout</button>
+    </form>
   {% endif %}
 </div>
 {% endblock %}
