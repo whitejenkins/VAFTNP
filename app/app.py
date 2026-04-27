@@ -701,6 +701,9 @@ def create_app():
             .limit(40)
         )
         results = []
+        author_input = ""
+        rating_input = ""
+        text_input = ""
         if request.method == "POST":
             action = request.form.get("action", "filter")
             if action in {"approve", "reject", "delete"}:
@@ -718,9 +721,17 @@ def create_app():
                         reviews.update_one({"_id": oid, "product_id": pid}, {"$set": {"status": next_status}})
                     flash("Review moderation action applied.", "success")
                 return redirect(url_for("reviews_moderation", pid=pid))
-            author = maybe_json(request.form.get("author"))
-            rating = maybe_json(request.form.get("rating"))
-            query = {"product": product["name"], "author": author, "rating": rating}
+        if request.method == "POST" or any(request.args.get(x) for x in ("author", "rating", "text")):
+            author_input = request.values.get("author", "").strip()
+            rating_input = request.values.get("rating", "").strip()
+            text_input = request.values.get("text", "").strip()
+            query = {"product": product["name"]}
+            if author_input:
+                query["author"] = maybe_json(author_input)
+            if rating_input:
+                query["rating"] = maybe_json(rating_input)
+            if text_input:
+                query["text"] = maybe_json(text_input)
             results = list(reviews.find(query, {"_id": 0}))
 
         return render_template(
@@ -728,6 +739,9 @@ def create_app():
             product=product,
             review_query=query,
             review_results=results,
+            filter_author=author_input,
+            filter_rating=rating_input,
+            filter_text=text_input,
             moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
         )

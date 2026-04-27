@@ -6,8 +6,9 @@
   <p class="muted">Filter incoming reviews before publishing.</p>
   <form method="post" style="margin-bottom:14px">
     <input type="hidden" name="action" value="filter">
-    <input name="author" placeholder='Author or JSON filter (e.g. {"$ne":null})' required>
-    <input name="rating" placeholder='Rating or JSON filter (e.g. {"$gt":0})' required>
+    <input name="author" value="{{ filter_author }}" placeholder="Author (e.g. alice)">
+    <input name="rating" value="{{ filter_rating }}" placeholder="Rating (e.g. 5)">
+    <input name="text" value="{{ filter_text }}" placeholder="Review text contains...">
     <button class="btn">Apply filter</button>
   </form>
 
