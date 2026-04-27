@@ -749,28 +749,55 @@ def create_app():
         if not product:
             return "Product not found", 404
 
-        def mongo_filter_from_input(raw, *, contains=False, numeric=False):
-            if not raw:
+        def sanitize_operator_dict(value):
+            if not isinstance(value, dict):
+                return value
+            sanitized = {}
+            for key, nested_value in value.items():
+                if key.startswith("$") or "." in key:
+                    continue
+                if isinstance(nested_value, dict):
+                    nested_sanitized = {k: v for k, v in nested_value.items() if not k.startswith("$")}
+                    sanitized[key] = nested_sanitized
+                else:
+                    sanitized[key] = nested_value
+            return sanitized
+
+        def parse_text_filter(raw_value, *, contains=False):
+            cleaned = (raw_value or "").strip()
+            if not cleaned:
                 return None
-            parsed = maybe_json(raw)
+            parsed = maybe_json(cleaned)
             if isinstance(parsed, dict):
-                return parsed
-            if numeric and str(parsed).isdigit():
-                return int(parsed)
+                return sanitize_operator_dict(parsed)
             if contains and isinstance(parsed, str):
                 return {"$regex": re.escape(parsed), "$options": "i"}
             return parsed
 
-        query = {"product_id": pid}
-        moderation_query = {"product_id": pid}
+        def parse_rating_filter(raw_value):
+            cleaned = (raw_value or "").strip()
+            if not cleaned:
+                return None
+            parsed = maybe_json(cleaned)
+            if isinstance(parsed, int):
+                return parsed
+            if isinstance(parsed, str) and parsed.isdigit():
+                return int(parsed)
+            return None
+
+        base_review_query = {"product_id": pid}
+        review_query = dict(base_review_query)
+        review_results = []
         moderation_items = []
-        results = []
-        author_input = ""
-        rating_input = ""
-        text_input = ""
-        cardholder_input = ""
+
+        author_input = request.values.get("author", "").strip()
+        rating_input = request.values.get("rating", "").strip()
+        text_input = request.values.get("text", "").strip()
+        status_input = request.values.get("status", "pending").strip().lower() or "pending"
+        cardholder_input = request.values.get("cardholder", "").strip()
         card_results = []
-        search_results_pretty = "[]"
+        filter_errors = []
+
         if request.method == "POST":
             action = request.form.get("action", "filter")
             if action in {"approve", "reject", "delete"}:
@@ -788,72 +815,91 @@ def create_app():
                         reviews.update_one({"_id": oid, "product_id": pid}, {"$set": {"status": next_status}})
                     flash("Review moderation action applied.", "success")
                 return redirect(url_for("reviews_moderation", pid=pid))
-        if request.method == "POST" or any(request.args.get(x) for x in ("author", "rating", "text", "cardholder")):
-            author_input = request.values.get("author", "").strip()
-            rating_input = request.values.get("rating", "").strip()
-            text_input = request.values.get("text", "").strip()
-            cardholder_input = request.values.get("cardholder", "").strip()
-            parsed_author = mongo_filter_from_input(author_input, contains=True)
-            parsed_rating = mongo_filter_from_input(rating_input, numeric=True)
-            parsed_text = mongo_filter_from_input(text_input, contains=True)
-            review_filters_present = any([author_input, rating_input, text_input])
-            filters = []
-            if parsed_author is not None:
-                filters.append({"author": parsed_author})
-            if parsed_rating is not None:
-                filters.append({"rating": parsed_rating})
-            if parsed_text is not None:
-                filters.append({"text": parsed_text})
-            query = {"product_id": pid}
-            if review_filters_present and filters:
-                query["$or"] = filters
-                results = list(reviews.find(query, {"_id": 0}))
-            else:
-                results = []
-            moderation_query = {"product_id": pid}
-            if review_filters_present and filters:
-                moderation_query["$or"] = filters
-            card_query = {}
-            if cardholder_input:
-                parsed_cardholder = mongo_filter_from_input(cardholder_input, contains=True)
-                if isinstance(parsed_cardholder, dict):
-                    card_ops = set(parsed_cardholder.keys())
-                    field_level_ops = {"$ne", "$in", "$regex"}
-                    if "cardholder" in parsed_cardholder:
-                        card_query = parsed_cardholder
-                    elif card_ops.intersection(field_level_ops):
-                        card_query = {"cardholder": parsed_cardholder}
-                    else:
-                        card_query = parsed_cardholder
-                else:
-                    card_query = {"cardholder": parsed_cardholder}
-                try:
-                    card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
-                except OperationFailure as exc:
-                    flash(f"Card lookup query error: {exc.details.get('errmsg', str(exc))}", "error")
-                    card_results = []
-                search_results_pretty = json.dumps(
-                    {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
-                    ensure_ascii=False,
-                    indent=2,
-                    default=str,
-                )
+
+        if status_input in {"pending", "approved", "rejected", "all"}:
+            if status_input != "all":
+                review_query["status"] = status_input
+        else:
+            status_input = "pending"
+            review_query["status"] = status_input
+
+        parsed_author = parse_text_filter(author_input, contains=True)
+        parsed_text = parse_text_filter(text_input, contains=True)
+        parsed_rating = parse_rating_filter(rating_input)
+
+        if author_input and parsed_author is None:
+            filter_errors.append("Author filter is invalid.")
+        if text_input and parsed_text is None:
+            filter_errors.append("Text filter is invalid.")
+        if rating_input and parsed_rating is None:
+            filter_errors.append("Rating must be an integer.")
+
+        if parsed_author is not None:
+            review_query["author"] = parsed_author
+        if parsed_text is not None:
+            review_query["text"] = parsed_text
+        if parsed_rating is not None:
+            review_query["rating"] = parsed_rating
+
+        if filter_errors:
+            for msg in filter_errors:
+                flash(msg, "error")
+            moderation_items = list(
+                reviews.find(base_review_query, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
+                .sort("created_at", -1)
+                .limit(40)
+            )
+            review_query_pretty = json.dumps(base_review_query, ensure_ascii=False, indent=2, default=str)
+            search_results_pretty = json.dumps({"reviews": [], "cards": []}, ensure_ascii=False, indent=2, default=str)
+            return render_template(
+                "reviews_moderation.html",
+                product=product,
+                review_query=base_review_query,
+                review_query_pretty=review_query_pretty,
+                review_results=[],
+                filter_author=author_input,
+                filter_rating=rating_input,
+                filter_text=text_input,
+                filter_status=status_input,
+                filter_cardholder=cardholder_input,
+                search_results_pretty=search_results_pretty,
+                moderation_items=moderation_items,
+                cart_count=len(session.get("cart", [])),
+            )
+
+        review_results = list(reviews.find(review_query, {"_id": 0}).sort("created_at", -1).limit(50))
         moderation_items = list(
-            reviews.find(moderation_query, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
+            reviews.find(review_query, {"_id": 1, "author": 1, "rating": 1, "text": 1, "status": 1, "created_at": 1})
             .sort("created_at", -1)
             .limit(40)
         )
-        review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
+
+        if cardholder_input:
+            parsed_cardholder = parse_text_filter(cardholder_input, contains=True)
+            if parsed_cardholder is not None:
+                card_query = {"cardholder": parsed_cardholder}
+                card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
+            else:
+                flash("Cardholder filter is invalid.", "error")
+
+        review_query_pretty = json.dumps(review_query, ensure_ascii=False, indent=2, default=str)
+        search_results_pretty = json.dumps(
+            {"reviews": review_results, "cards": card_results},
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
 
         return render_template(
             "reviews_moderation.html",
             product=product,
-            review_query=query,
+            review_query=review_query,
             review_query_pretty=review_query_pretty,
-            review_results=results,
+            review_results=review_results,
             filter_author=author_input,
             filter_rating=rating_input,
             filter_text=text_input,
+            filter_status=status_input,
             filter_cardholder=cardholder_input,
             search_results_pretty=search_results_pretty,
             moderation_items=moderation_items,
