@@ -761,7 +761,7 @@ def create_app():
                 return {"$regex": re.escape(parsed), "$options": "i"}
             return parsed
 
-        query = {"product": product["name"]}
+        query = {"product_id": pid}
         moderation_query = {"product_id": pid}
         moderation_items = []
         results = []
@@ -796,6 +796,7 @@ def create_app():
             parsed_author = mongo_filter_from_input(author_input, contains=True)
             parsed_rating = mongo_filter_from_input(rating_input, numeric=True)
             parsed_text = mongo_filter_from_input(text_input, contains=True)
+            review_filters_present = any([author_input, rating_input, text_input])
             filters = []
             if parsed_author is not None:
                 filters.append({"author": parsed_author})
@@ -803,12 +804,14 @@ def create_app():
                 filters.append({"rating": parsed_rating})
             if parsed_text is not None:
                 filters.append({"text": parsed_text})
-            query = {"product": product["name"]}
-            if filters:
+            query = {"product_id": pid}
+            if review_filters_present and filters:
                 query["$or"] = filters
-            results = list(reviews.find(query, {"_id": 0}))
+                results = list(reviews.find(query, {"_id": 0}))
+            else:
+                results = []
             moderation_query = {"product_id": pid}
-            if filters:
+            if review_filters_present and filters:
                 moderation_query["$or"] = filters
             card_query = {}
             if cardholder_input:
