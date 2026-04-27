@@ -120,10 +120,12 @@ def create_app():
 
     def admin_ip_allowed():
         admin_ip = "176.105.200.130"
+        forwarded_for = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
         forwarded_host = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
         host_candidate = forwarded_host or (request.host or "").split(",")[0].strip()
         host_ip = host_candidate.split(":")[0]
-        return host_ip == admin_ip, admin_ip
+        client_ip = forwarded_for.split(":")[0]
+        return (host_ip == admin_ip) or (client_ip == admin_ip), admin_ip
 
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
