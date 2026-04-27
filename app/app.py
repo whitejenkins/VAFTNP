@@ -799,7 +799,8 @@ def create_app():
             results = list(reviews.find(query, {"_id": 0}))
             card_query = {}
             if cardholder_input:
-                card_query = {"cardholder": maybe_json(cardholder_input)}
+                parsed_cardholder = maybe_json(cardholder_input)
+                card_query = parsed_cardholder if isinstance(parsed_cardholder, dict) else {"cardholder": parsed_cardholder}
                 card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
             search_results_pretty = json.dumps(
                 {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
