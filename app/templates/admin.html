@@ -5,6 +5,25 @@
   <h1>Admin Control Panel</h1>
   <p class="muted">Only for fully authenticated users.</p>
 
+  <h2>Admin tools</h2>
+  <p>
+    <a class="btn" href="/admin/marketing/email/preview">Marketing email preview</a>
+    <a class="btn" href="/admin/catalog/import/xml">Catalog XML import</a>
+    <a class="btn" href="/admin/pricing/rules/preview">Pricing rules preview</a>
+  </p>
+
+  <h2>Product reviews moderation pages</h2>
+  <table class="table">
+    <tr><th>Product ID</th><th>Product</th><th>Moderation</th></tr>
+    {% for p in products %}
+    <tr>
+      <td>{{ p.id }}</td>
+      <td>{{ p.name }}</td>
+      <td><a class="btn secondary" href="/product/{{ p.id }}/reviews/moderation">Open moderation</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+
   <h2>Users</h2>
   <table class="table">
     <tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th></tr>

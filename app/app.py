@@ -326,6 +326,8 @@ def create_app():
             users = cur.fetchall()
             cur.execute("SELECT id,user_id,total,created_at FROM orders ORDER BY id DESC LIMIT 20")
             orders = cur.fetchall()
+            cur.execute("SELECT id,name FROM products ORDER BY id DESC LIMIT 20")
+            products = cur.fetchall()
         pending_reviews = list(
             reviews.find(
                 {"status": "pending"},
@@ -338,6 +340,7 @@ def create_app():
             "admin.html",
             users=users,
             orders=orders,
+            products=products,
             pending_reviews=pending_reviews,
             cart_count=len(session.get("cart", [])),
         )
