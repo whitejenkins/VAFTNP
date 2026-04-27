@@ -168,6 +168,14 @@ def create_app():
                 return value
         return value
 
+    def looks_like_nosqli_probe(value):
+        probe = (value or "").strip()
+        if not probe:
+            return False
+        probe_tokens = ["$foo", "\\x", ";$foo}", "\"'`{", "{\\n", "$ne", "$gt", "$regex", "$where"]
+        lowered = probe.lower()
+        return any(token in lowered for token in probe_tokens)
+
     def rolling_otp(seed, moment=None):
         now = int(moment or time.time())
         window = now // 600
