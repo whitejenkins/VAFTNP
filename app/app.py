@@ -77,7 +77,34 @@ def create_app():
                 reviews.insert_many(to_insert)
         return True
 
+    def seed_payment_cards():
+        if payment_cards.count_documents({}) > 0:
+            return
+        payment_cards.insert_many(
+            [
+                {
+                    "user_id": 1,
+                    "username": "admin",
+                    "cardholder": "Admin River North",
+                    "card_number": "4111-1111-1111-1111",
+                    "exp": "12/30",
+                    "cvv": "999",
+                    "created_at": int(time.time()) - 3600,
+                },
+                {
+                    "user_id": 2,
+                    "username": "alice",
+                    "cardholder": "Alice Hightower",
+                    "card_number": "5555-4444-3333-1111",
+                    "exp": "08/29",
+                    "cvv": "123",
+                    "created_at": int(time.time()) - 1800,
+                },
+            ]
+        )
+
     startup_state = {"reviews_seeded": seed_demo_reviews()}
+    seed_payment_cards()
 
     @app.before_request
     def ensure_reviews_seeded():
@@ -733,7 +760,7 @@ def create_app():
         text_input = ""
         cardholder_input = ""
         card_results = []
-        card_query_pretty = "{}"
+        search_results_pretty = "[]"
         if request.method == "POST":
             action = request.form.get("action", "filter")
             if action in {"approve", "reject", "delete"}:
@@ -770,10 +797,16 @@ def create_app():
             if filters:
                 query["$or"] = filters
             results = list(reviews.find(query, {"_id": 0}))
+            card_query = {}
             if cardholder_input:
                 card_query = {"cardholder": maybe_json(cardholder_input)}
                 card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
-                card_query_pretty = json.dumps(card_query, ensure_ascii=False, indent=2, default=str)
+            search_results_pretty = json.dumps(
+                {"reviews": results, "card_lookup_query": card_query, "cards": card_results},
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
         review_query_pretty = json.dumps(query, ensure_ascii=False, indent=2, default=str)
 
         return render_template(
@@ -786,8 +819,7 @@ def create_app():
             filter_rating=rating_input,
             filter_text=text_input,
             filter_cardholder=cardholder_input,
-            card_results=card_results,
-            card_query_pretty=card_query_pretty,
+            search_results_pretty=search_results_pretty,
             moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
         )
