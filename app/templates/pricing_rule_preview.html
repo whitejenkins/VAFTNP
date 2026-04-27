@@ -5,11 +5,22 @@
   <h1>Pricing rule preview</h1>
   <p class="muted">Evaluate dynamic discount formulas for electronics catalog campaigns.</p>
   <form method="post">
+    <input name="title" placeholder="Rule title (for save)">
     <input name="expr" value="{{ expr }}" required>
-    <button class="btn">Evaluate</button>
+    <button class="btn" name="action" value="evaluate">Evaluate</button>
+    <button class="btn secondary" name="action" value="save">Save rule</button>
   </form>
   {% if result %}
     <pre>{{ result }}</pre>
+  {% endif %}
+  {% if saved_rules %}
+    <h3>Saved rule drafts</h3>
+    <table class="table">
+      <tr><th>Title</th><th>Expression</th><th>Preview result</th></tr>
+      {% for item in saved_rules %}
+      <tr><td>{{ item.title }}</td><td>{{ item.expr }}</td><td>{{ item.result }}</td></tr>
+      {% endfor %}
+    </table>
   {% endif %}
 </div>
 {% endblock %}
