@@ -136,7 +136,9 @@ def create_app():
                         session.pop("pre_2fa_user", None)
                         reset_login_rate_limit(pending_user.get("username"))
                         reset_otp_rate_limit(pending_user.get("username"))
-                        return fn(*args, **kwargs)
+                        resp = make_response(fn(*args, **kwargs))
+                        resp.set_cookie("role", encode_role_cookie(pending_user.get("role", "user")))
+                        return resp
                 return redirect(url_for("login"))
             return fn(*args, **kwargs)
 
