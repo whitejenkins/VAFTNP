@@ -44,8 +44,10 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 
 INSERT INTO users (username,email,password,role,twofa_secret,bio) VALUES
 ('admin','admin@shop.local','Riv3rN0rth!29','admin','111111','I am admin'),
-('alice','alice@shop.local','Hightower7','user','222222','hello'),
-('bob','bob@shop.local','KestrelMoon84#','user','333333','safe user')
+('alice','alice@shop.local','dancercHick2000','user','222222','hello'),
+('bob','bob@shop.local','KestrelMoon84#','user','333333','safe user'),
+('mira','mira@shop.local','Zx!9vQ2#Lm7@tP5$Hs1','user','444444','qa account'),
+('niko','niko@shop.local','Qw#4Rp!8Tz@1Yv$6Nd2','user','555555','sales account')
 ON DUPLICATE KEY UPDATE username=username;
 
 INSERT INTO products (name,description,price,category) VALUES
@@ -57,7 +59,9 @@ INSERT INTO products (name,description,price,category) VALUES
 INSERT INTO orders (user_id,product_id,total,note) VALUES
 (2,1,49.90,'first order'),
 (2,3,12.50,'gift'),
-(3,2,89.00,'office setup');
+(3,2,89.00,'office setup'),
+(4,4,5.30,'notebook refill'),
+(5,1,49.90,'late night gaming');
 
 INSERT INTO wishlists (user_id,product_id) VALUES
 (2,2),
