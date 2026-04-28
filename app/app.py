@@ -368,6 +368,12 @@ def create_app():
             reset_login_rate_limit(user.get("username"))
 
             if code == current_code:
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session["role"] = user["role"]
+                session["active"] = True
+                session.pop("pre_2fa_user", None)
+                reset_login_rate_limit(user.get("username"))
                 resp = redirect(url_for("dashboard"))
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp
