@@ -109,6 +109,9 @@ def create_app():
     login_attempts_by_user = {}
     login_attempt_threshold = 25000
     login_block_seconds = 300
+    otp_attempts_by_user = {}
+    otp_attempt_threshold = 5
+    otp_block_seconds = 60
 
     @app.before_request
     def ensure_reviews_seeded():
@@ -120,6 +123,20 @@ def create_app():
         @wraps(fn)
         def wrapper(*args, **kwargs):
             if not session.get("user_id"):
+                pending_uid = session.get("pre_2fa_user")
+                if pending_uid and request.path == "/account/dashboard":
+                    with mysql_conn().cursor() as cur:
+                        cur.execute("SELECT id,username,role FROM users WHERE id=%s", (pending_uid,))
+                        pending_user = cur.fetchone()
+                    if pending_user:
+                        session["user_id"] = pending_user["id"]
+                        session["username"] = pending_user["username"]
+                        session["role"] = pending_user["role"]
+                        session["active"] = True
+                        session.pop("pre_2fa_user", None)
+                        reset_login_rate_limit(pending_user.get("username"))
+                        reset_otp_rate_limit(pending_user.get("username"))
+                        return fn(*args, **kwargs)
                 return redirect(url_for("login"))
             return fn(*args, **kwargs)
 
@@ -168,6 +185,12 @@ def create_app():
             return
         login_attempts_by_user[key] = {"attempts": 0, "blocked_until": 0}
 
+    def reset_otp_rate_limit(username):
+        key = (username or "").strip().lower()
+        if not key:
+            return
+        otp_attempts_by_user[key] = {"attempts": 0, "blocked_until": 0}
+
     def check_login_rate_limit(username):
         key = (username or "").strip().lower()
         now = int(time.time())
@@ -182,6 +205,22 @@ def create_app():
             slot["attempts"] = 0
             slot["blocked_until"] = now + login_block_seconds
             return login_block_seconds
+        return 0
+
+    def check_otp_rate_limit(username):
+        key = (username or "").strip().lower()
+        now = int(time.time())
+        slot = otp_attempts_by_user.setdefault(key, {"attempts": 0, "blocked_until": 0})
+        if slot["blocked_until"] > now:
+            return slot["blocked_until"] - now
+        if slot["blocked_until"] and slot["blocked_until"] <= now:
+            slot["attempts"] = 0
+            slot["blocked_until"] = 0
+        slot["attempts"] += 1
+        if slot["attempts"] > otp_attempt_threshold:
+            slot["attempts"] = 0
+            slot["blocked_until"] = now + otp_block_seconds
+            return otp_block_seconds
         return 0
 
     def maybe_json(value):
@@ -345,6 +384,7 @@ def create_app():
             session["active"] = True
             session.pop("pre_2fa_user", None)
             reset_login_rate_limit(user.get("username"))
+            reset_otp_rate_limit(user.get("username"))
             resp = redirect(url_for("dashboard"))
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
@@ -352,6 +392,9 @@ def create_app():
 
         if request.method == "POST":
             code = request.form.get("code", "").strip()
+            retry_after = check_otp_rate_limit(user.get("username"))
+            if retry_after > 0:
+                return jsonify({"error": f"Too many OTP attempts. Try again in {retry_after} seconds."}), 429
             if has_empty(code):
                 return jsonify({"error": "2FA code is required."}), 400
             if not re.fullmatch(r"\d{4}", code):
@@ -363,6 +406,7 @@ def create_app():
                 session["active"] = True
                 session.pop("pre_2fa_user", None)
                 reset_login_rate_limit(user.get("username"))
+                reset_otp_rate_limit(user.get("username"))
                 resp = redirect(url_for("dashboard"))
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp

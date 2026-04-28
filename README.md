@@ -53,6 +53,8 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - OTP код для 2FA теперь динамический: меняется каждые 10 минут (4 цифры)
 - Login rate limiting: после 25000 попыток на один username вход блокируется на 5 минут; после успешного входа счётчик для этого username сбрасывается
+- OTP rate limiting: после 5 попыток ввода OTP аккаунт блокируется на 60 секунд
+- 2FA bypass (намеренная уязвимость): при наличии `pre_2fa_user` можно открыть `/account/dashboard` и получить полноценную сессию без проверки OTP
 - Default credentials: `alice/dancercHick2000`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
