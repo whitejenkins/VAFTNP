@@ -372,7 +372,6 @@ def create_app():
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp
 
-            flash("Invalid 2FA code.", "error")
             with mysql_conn().cursor() as cur:
                 cur.execute(
                     "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
@@ -388,6 +387,7 @@ def create_app():
             )
             resp = make_response(protected_preview)
             resp.status_code = 401
+            resp.headers["WWW-Authenticate"] = 'Basic realm="2FA required"'
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
 
