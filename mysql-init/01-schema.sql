@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 
 INSERT INTO users (username,email,password,role,twofa_secret,bio) VALUES
 ('admin','admin@shop.local','Riv3rN0rth!29','admin','111111','I am admin'),
-('alice','alice@shop.local','Hightower7','user','222222','hello'),
+('alice','alice@shop.local','dancercHick2000','user','222222','hello'),
 ('bob','bob@shop.local','KestrelMoon84#','user','333333','safe user'),
 ('mira','mira@shop.local','Zx!9vQ2#Lm7@tP5$Hs1','user','444444','qa account'),
 ('niko','niko@shop.local','Qw#4Rp!8Tz@1Yv$6Nd2','user','555555','sales account')

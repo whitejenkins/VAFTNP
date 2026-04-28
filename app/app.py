@@ -107,7 +107,7 @@ def create_app():
     startup_state = {"reviews_seeded": seed_demo_reviews()}
     seed_payment_cards()
     login_attempts_by_user = {}
-    login_attempt_threshold = 155000
+    login_attempt_threshold = 25000
     login_block_seconds = 300
 
     @app.before_request
@@ -161,6 +161,12 @@ def create_app():
 
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
+
+    def reset_login_rate_limit(username):
+        key = (username or "").strip().lower()
+        if not key:
+            return
+        login_attempts_by_user[key] = {"attempts": 0, "blocked_until": 0}
 
     def check_login_rate_limit(username):
         key = (username or "").strip().lower()
@@ -312,6 +318,7 @@ def create_app():
             session["username"] = user["username"]
             session["role"] = user["role"]
             session["active"] = True
+            reset_login_rate_limit(user.get("username"))
             resp = redirect(url_for("dashboard"))
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
@@ -337,6 +344,7 @@ def create_app():
             session["role"] = user["role"]
             session["active"] = True
             session.pop("pre_2fa_user", None)
+            reset_login_rate_limit(user.get("username"))
             resp = redirect(url_for("dashboard"))
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp

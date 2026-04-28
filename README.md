@@ -52,8 +52,8 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - OTP код для 2FA теперь динамический: меняется каждые 10 минут (4 цифры)
-- Login rate limiting: после 155000 попыток на один username вход блокируется на 5 минут
-- Default credentials: `alice/Hightower7`
+- Login rate limiting: после 25000 попыток на один username вход блокируется на 5 минут; после успешного входа счётчик для этого username сбрасывается
+- Default credentials: `alice/dancercHick2000`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
 - IDOR: `GET /orders/<id>`
@@ -240,7 +240,7 @@ curl "http://localhost:8000/remote/include?url=https://example.org"
 
 ## Seed users
 - `admin / Riv3rN0rth!29`
-- `alice / Hightower7`
+- `alice / dancercHick2000`
 - `bob / KestrelMoon84#`
 - `mira / Zx!9vQ2#Lm7@tP5$Hs1`
 - `niko / Qw#4Rp!8Tz@1Yv$6Nd2`
