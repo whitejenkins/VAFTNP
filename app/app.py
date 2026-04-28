@@ -686,9 +686,7 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT * FROM orders WHERE id={order_id}")
             row = cur.fetchone()
-        payload = row or {}
-        payload["idor_pattern"] = bool(row and row.get("user_id") != session.get("user_id"))
-        return jsonify(payload)
+        return jsonify(row or {})
 
     @app.route("/support", methods=["GET", "POST"])
     @login_required

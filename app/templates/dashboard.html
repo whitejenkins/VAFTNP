@@ -13,17 +13,8 @@
   </p>
 
   <h3>Your orders</h3>
-  <p class="muted">Loaded dynamically via <code>GET /orders/&lt;id&gt;</code> right after page open.</p>
+  <p class="muted">Recent orders are loaded automatically.</p>
   <ul id="orders-list"></ul>
-
-  <h3 style="margin-top: 16px;">IDOR order probe</h3>
-  <p class="muted">Try iterating order IDs manually to view чужие заказы через IDOR.</p>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <input id="order-probe-id" type="number" min="1" placeholder="Order ID">
-    <button id="order-probe-load" class="btn secondary" type="button">Load by ID</button>
-    <button id="order-probe-next" class="btn secondary" type="button">Next ID</button>
-  </div>
-  <pre id="order-probe-result" style="white-space:pre-wrap;overflow-x:auto;max-width:100%;word-break:break-word"></pre>
 
   <h3>Wishlist snapshot</h3>
   <ul>{% for w in wishlist_items %}<li>{{w.name}} — ${{w.price}}</li>{% endfor %}</ul>
@@ -40,7 +31,7 @@
   function renderOrderListItem(order) {
     const li = document.createElement("li");
     if (order && order.id) {
-      li.textContent = `Order #${order.id} $${order.total} / Product ${order.product_id} / user_id=${order.user_id}`;
+      li.textContent = `Order #${order.id} $${order.total} / Product ${order.product_id}`;
     } else {
       li.textContent = "Order not found";
     }
@@ -59,7 +50,6 @@
         listNode.innerHTML = "<li>No orders yet.</li>";
         return;
       }
-      document.getElementById("order-probe-id").value = orderIds[0];
       for (const orderId of orderIds) {
         const orderPayload = await fetchOrderById(orderId);
         listNode.appendChild(renderOrderListItem(orderPayload));
@@ -69,29 +59,8 @@
     }
   }
 
-  async function loadProbeOrder(orderId) {
-    const target = document.getElementById("order-probe-result");
-    if (!orderId || orderId < 1) {
-      target.textContent = "Enter valid order id.";
-      return;
-    }
-    try {
-      const payload = await fetchOrderById(orderId);
-      target.textContent = JSON.stringify(payload, null, 2);
-    } catch (e) {
-      target.textContent = `Probe error: ${e.message}`;
-    }
-  }
-
   document.addEventListener("DOMContentLoaded", () => {
     loadDashboardOrders();
-    const input = document.getElementById("order-probe-id");
-    document.getElementById("order-probe-load").addEventListener("click", () => loadProbeOrder(parseInt(input.value, 10)));
-    document.getElementById("order-probe-next").addEventListener("click", () => {
-      const next = (parseInt(input.value, 10) || 0) + 1;
-      input.value = next;
-      loadProbeOrder(next);
-    });
   });
 </script>
 {% endblock %}
