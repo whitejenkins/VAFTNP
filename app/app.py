@@ -331,7 +331,7 @@ def create_app():
             return redirect(url_for("login"))
 
         with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,username,role,twofa_secret FROM users WHERE id=%s", (uid,))
+            cur.execute("SELECT id,username,email,role,twofa_secret FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
         if not user:
             session.pop("pre_2fa_user", None)
@@ -373,7 +373,15 @@ def create_app():
                 return resp
 
             flash("Invalid 2FA code.", "error")
-            resp = make_response(render_template("dashboard.html", cart_count=len(session.get("cart", []))))
+            protected_preview = render_template_string(
+                """
+                <h1>User Dashboard</h1>
+                <p>{{ u.username }} — {{ u.email }}</p>
+                <p>Recent orders are loaded automatically.</p>
+                """,
+                u=user,
+            )
+            resp = make_response(protected_preview)
             resp.status_code = 401
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
