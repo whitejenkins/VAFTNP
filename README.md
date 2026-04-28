@@ -136,6 +136,7 @@ curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   --data-urlencode 'card_number=4111-1111-1111-1111' \
   --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
+```
 
 # operator-based вариант (если нужен для демонстрации NoSQLi)
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
