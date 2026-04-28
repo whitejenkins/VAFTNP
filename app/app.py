@@ -14,7 +14,7 @@ import pymysql
 import requests
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from flask import flash, Flask, jsonify, make_response, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
@@ -370,7 +370,7 @@ def create_app():
             return redirect(url_for("login"))
 
         with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,username,role,twofa_secret FROM users WHERE id=%s", (uid,))
+            cur.execute("SELECT id,username,email,role,twofa_secret FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
         if not user:
             session.pop("pre_2fa_user", None)
