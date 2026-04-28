@@ -52,7 +52,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - OTP код для 2FA теперь динамический: меняется каждые 10 минут (4 цифры)
-- No rate limiting: ограничения по частоте запросов на логине отсутствуют
+- Login rate limiting: после 155000 попыток на один username вход блокируется на 5 минут
 - Default credentials: `alice/Hightower7`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`

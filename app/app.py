@@ -106,6 +106,9 @@ def create_app():
 
     startup_state = {"reviews_seeded": seed_demo_reviews()}
     seed_payment_cards()
+    login_attempts_by_user = {}
+    login_attempt_threshold = 155000
+    login_block_seconds = 300
 
     @app.before_request
     def ensure_reviews_seeded():
@@ -158,6 +161,22 @@ def create_app():
 
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
+
+    def check_login_rate_limit(username):
+        key = (username or "").strip().lower()
+        now = int(time.time())
+        slot = login_attempts_by_user.setdefault(key, {"attempts": 0, "blocked_until": 0})
+        if slot["blocked_until"] > now:
+            return slot["blocked_until"] - now
+        if slot["blocked_until"] and slot["blocked_until"] <= now:
+            slot["attempts"] = 0
+            slot["blocked_until"] = 0
+        slot["attempts"] += 1
+        if slot["attempts"] > login_attempt_threshold:
+            slot["attempts"] = 0
+            slot["blocked_until"] = now + login_block_seconds
+            return login_block_seconds
+        return 0
 
     def maybe_json(value):
         value = (value or "").strip()
@@ -272,6 +291,10 @@ def create_app():
             if has_empty(username, password):
                 flash("Username and password are required.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 400
+            retry_after = check_login_rate_limit(username)
+            if retry_after > 0:
+                flash(f"Too many login attempts for {username}. Try again in {retry_after} seconds.", "error")
+                return render_template("login.html", cart_count=len(session.get("cart", []))), 429
             with mysql_conn().cursor() as cur:
                 cur.execute(f"SELECT * FROM users WHERE username='{username}'")
                 user = cur.fetchone()
