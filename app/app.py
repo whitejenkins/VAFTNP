@@ -373,13 +373,18 @@ def create_app():
                 return resp
 
             flash("Invalid 2FA code.", "error")
-            protected_preview = render_template_string(
-                """
-                <h1>User Dashboard</h1>
-                <p>{{ u.username }} — {{ u.email }}</p>
-                <p>Recent orders are loaded automatically.</p>
-                """,
-                u=user,
+            with mysql_conn().cursor() as cur:
+                cur.execute(
+                    "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
+                    (user["id"],),
+                )
+                wishlist_items = cur.fetchall()
+            user["role"] = role_from_cookie()
+            protected_preview = render_template(
+                "dashboard.html",
+                user=user,
+                wishlist_items=wishlist_items,
+                cart_count=len(session.get("cart", [])),
             )
             resp = make_response(protected_preview)
             resp.status_code = 401
