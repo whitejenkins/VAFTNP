@@ -358,17 +358,25 @@ def create_app():
             if not re.fullmatch(r"\d{4}", code):
                 flash("2FA code must be exactly 4 digits.", "error")
                 return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
+
+            # Intentional flaw for training: session becomes active before OTP verification.
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["active"] = True
+            session.pop("pre_2fa_user", None)
+            reset_login_rate_limit(user.get("username"))
+
             if code == current_code:
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-                session["active"] = True
-                session.pop("pre_2fa_user", None)
                 resp = redirect(url_for("dashboard"))
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp
+
             flash("Invalid 2FA code.", "error")
-            return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
+            resp = make_response(render_template("dashboard.html", cart_count=len(session.get("cart", []))))
+            resp.status_code = 401
+            resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
+            return resp
 
         return render_template("twofa.html", cart_count=len(session.get("cart", [])))
 

@@ -56,6 +56,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Default credentials: `alice/dancercHick2000`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
+- 2FA response tampering bypass: `POST /auth/2fa` может вернуть `401` с уже активированной сессией (если перехватить и подменить статус на `200`, защищённая страница отображается как будто 2FA пройдена)
 - IDOR: `GET /orders/<id>`
 - Privilege escalation: роль берётся из cookie `role` (base64), можно поднять права подменой `dXNlcg==` (`user`) -> `YWRtaW4=` (`admin`)
 
