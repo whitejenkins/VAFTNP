@@ -14,7 +14,7 @@
       <option value="rejected" {% if filter_status == "rejected" %}selected{% endif %}>Rejected</option>
       <option value="all" {% if filter_status == "all" %}selected{% endif %}>All statuses</option>
     </select>
-    <input name="cardholder" value="{{ filter_cardholder }}" placeholder="Cardholder lookup">
+    <input name="card_number" value="{{ filter_card_number }}" placeholder="Card number lookup">
     <button class="btn">Apply filter</button>
     <a href="{{ url_for('reviews_moderation', pid=product.id) }}" class="btn secondary">Reset</a>
   </form>
