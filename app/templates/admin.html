@@ -38,6 +38,10 @@
         <form method="post" action="/admin/users/{{u.id}}/promote" style="display:inline">
           <button class="btn">Promote</button>
         </form>
+        {% else %}
+        <form method="post" action="/admin/users/{{u.id}}/demote" style="display:inline">
+          <button class="btn secondary">Demote</button>
+        </form>
         {% endif %}
         <form method="post" action="/admin/users/{{u.id}}/delete" style="display:inline">
           <button class="btn secondary">Delete</button>
