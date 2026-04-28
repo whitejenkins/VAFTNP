@@ -401,6 +401,17 @@ def create_app():
         flash("User role promoted to admin.", "success")
         return redirect(url_for("admin_php"))
 
+    @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
+    @admin_required
+    def admin_user_demote(user_id):
+        if user_id == session.get("user_id"):
+            flash("You cannot demote your own account from admin panel.", "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET role='user' WHERE id=%s", (user_id,))
+        flash("User role demoted to user.", "success")
+        return redirect(url_for("admin_php"))
+
     @app.route("/admin/users/<int:user_id>/password", methods=["POST"])
     @admin_required
     def admin_user_password_change(user_id):
@@ -485,15 +496,22 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT id,username,email,role,bio FROM users WHERE id={uid}")
             user = cur.fetchone()
-            cur.execute(f"SELECT * FROM orders WHERE user_id={uid}")
-            orders = cur.fetchall()
             cur.execute(
                 "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
                 (uid,),
             )
             wishlist_items = cur.fetchall()
         user["role"] = role_from_cookie()
-        return render_template("dashboard.html", user=user, orders=orders, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+        return render_template("dashboard.html", user=user, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+
+    @app.route("/account/orders/ids")
+    @login_required
+    def account_order_ids():
+        uid = session.get("user_id")
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id FROM orders WHERE user_id=%s ORDER BY id", (uid,))
+            ids = [row["id"] for row in cur.fetchall()]
+        return jsonify({"order_ids": ids})
 
     @app.route("/account/profile", methods=["GET", "POST"])
     @login_required
@@ -749,16 +767,17 @@ def create_app():
         if not product:
             return "Product not found", 404
 
+        allowed_nosql_ops = {"$where", "$ne", "$in", "$regex", "$options"}
+
         def sanitize_operator_dict(value):
             if not isinstance(value, dict):
                 return value
             sanitized = {}
             for key, nested_value in value.items():
-                if key.startswith("$") or "." in key:
+                if key.startswith("$") and key not in allowed_nosql_ops:
                     continue
                 if isinstance(nested_value, dict):
-                    nested_sanitized = {k: v for k, v in nested_value.items() if not k.startswith("$")}
-                    sanitized[key] = nested_sanitized
+                    sanitized[key] = sanitize_operator_dict(nested_value)
                 else:
                     sanitized[key] = nested_value
             return sanitized
@@ -771,7 +790,7 @@ def create_app():
             if isinstance(parsed, dict):
                 return sanitize_operator_dict(parsed)
             if contains and isinstance(parsed, str):
-                return {"$regex": re.escape(parsed), "$options": "i"}
+                return {"$regex": parsed, "$options": "i"}
             return parsed
 
         def parse_rating_filter(raw_value):
@@ -779,11 +798,36 @@ def create_app():
             if not cleaned:
                 return None
             parsed = maybe_json(cleaned)
+            if isinstance(parsed, dict):
+                parsed = sanitize_operator_dict(parsed)
+                return parsed if parsed else None
             if isinstance(parsed, int):
                 return parsed
             if isinstance(parsed, str) and parsed.isdigit():
                 return int(parsed)
             return None
+
+        def parse_card_number_filter(raw_value):
+            cleaned = (raw_value or "").strip()
+            if not cleaned:
+                return None
+            parsed = maybe_json(cleaned)
+            if isinstance(parsed, dict):
+                parsed = sanitize_operator_dict(parsed)
+                return parsed if parsed else None
+            if isinstance(parsed, str) and re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{4}", parsed):
+                return parsed
+            return None
+
+        def apply_filter(query, field_name, parsed_filter):
+            if parsed_filter is None:
+                return
+            if isinstance(parsed_filter, dict) and "$where" in parsed_filter:
+                query["$where"] = parsed_filter["$where"]
+                parsed_filter = {k: v for k, v in parsed_filter.items() if k != "$where"}
+                if not parsed_filter:
+                    return
+            query[field_name] = parsed_filter
 
         base_review_query = {"product_id": pid}
         review_query = dict(base_review_query)
@@ -794,7 +838,7 @@ def create_app():
         rating_input = request.values.get("rating", "").strip()
         text_input = request.values.get("text", "").strip()
         status_input = request.values.get("status", "pending").strip().lower() or "pending"
-        cardholder_input = request.values.get("cardholder", "").strip()
+        card_number_input = request.values.get("card_number", "").strip()
         card_results = []
         filter_errors = []
 
@@ -834,12 +878,9 @@ def create_app():
         if rating_input and parsed_rating is None:
             filter_errors.append("Rating must be an integer.")
 
-        if parsed_author is not None:
-            review_query["author"] = parsed_author
-        if parsed_text is not None:
-            review_query["text"] = parsed_text
-        if parsed_rating is not None:
-            review_query["rating"] = parsed_rating
+        apply_filter(review_query, "author", parsed_author)
+        apply_filter(review_query, "text", parsed_text)
+        apply_filter(review_query, "rating", parsed_rating)
 
         if filter_errors:
             for msg in filter_errors:
@@ -861,7 +902,7 @@ def create_app():
                 filter_rating=rating_input,
                 filter_text=text_input,
                 filter_status=status_input,
-                filter_cardholder=cardholder_input,
+                filter_card_number=card_number_input,
                 search_results_pretty=search_results_pretty,
                 moderation_items=moderation_items,
                 cart_count=len(session.get("cart", [])),
@@ -874,13 +915,14 @@ def create_app():
             .limit(40)
         )
 
-        if cardholder_input:
-            parsed_cardholder = parse_text_filter(cardholder_input, contains=True)
-            if parsed_cardholder is not None:
-                card_query = {"cardholder": parsed_cardholder}
+        if card_number_input:
+            parsed_card_number = parse_card_number_filter(card_number_input)
+            if parsed_card_number is not None:
+                card_query = {}
+                apply_filter(card_query, "card_number", parsed_card_number)
                 card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
             else:
-                flash("Cardholder filter is invalid.", "error")
+                flash("Card number must be full (format: ####-####-####-####) or valid JSON filter.", "error")
 
         review_query_pretty = json.dumps(review_query, ensure_ascii=False, indent=2, default=str)
         search_results_pretty = json.dumps(
@@ -900,7 +942,7 @@ def create_app():
             filter_rating=rating_input,
             filter_text=text_input,
             filter_status=status_input,
-            filter_cardholder=cardholder_input,
+            filter_card_number=card_number_input,
             search_results_pretty=search_results_pretty,
             moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
@@ -1086,6 +1128,7 @@ def create_app():
                 "/shop/brands": {"get": {"summary": "List shop brands", "responses": {"200": {"description": "ok"}}}},
                 "/shop/deals": {"get": {"summary": "Current deals", "responses": {"200": {"description": "ok"}}}},
                 "/account/addresses": {"get": {"summary": "Address book", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Add address", "responses": {"200": {"description": "ok"}}}},
+                "/account/orders/ids": {"get": {"summary": "Current user order ids", "responses": {"200": {"description": "ok"}}}},
                 "/shipping/carrier/diagnostics": {"get": {"summary": "Carrier diagnostics page", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Run carrier diagnostics", "responses": {"200": {"description": "ok"}}}},
                 "/product/{pid}/reviews": {"post": {"summary": "Create product review", "responses": {"200": {"description": "ok"}}}},
                 "/product/{pid}/reviews/moderation": {"get": {"summary": "Reviews moderation dashboard", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Reviews moderation actions/filter", "responses": {"200": {"description": "ok"}}}},
@@ -1094,6 +1137,7 @@ def create_app():
                 "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/delete": {"post": {"summary": "Delete user", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/promote": {"post": {"summary": "Promote user to admin", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/demote": {"post": {"summary": "Demote user to regular role", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/password": {"post": {"summary": "Change user password", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/approve": {"post": {"summary": "Approve pending review", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/reject": {"post": {"summary": "Reject pending review", "responses": {"200": {"description": "ok"}}}},
