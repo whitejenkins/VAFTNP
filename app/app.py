@@ -372,7 +372,7 @@ def create_app():
             return redirect(url_for("login"))
 
         with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,username,role,twofa_secret FROM users WHERE id=%s", (uid,))
+            cur.execute("SELECT id,username,email,role,twofa_secret FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
         if not user:
             session.pop("pre_2fa_user", None)
