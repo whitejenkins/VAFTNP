@@ -789,6 +789,18 @@ def create_app():
                 return int(parsed)
             return None
 
+        def parse_card_number_filter(raw_value):
+            cleaned = (raw_value or "").strip()
+            if not cleaned:
+                return None
+            parsed = maybe_json(cleaned)
+            if isinstance(parsed, dict):
+                parsed = sanitize_operator_dict(parsed)
+                return parsed if parsed else None
+            if isinstance(parsed, str) and re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{4}", parsed):
+                return parsed
+            return None
+
         def apply_filter(query, field_name, parsed_filter):
             if parsed_filter is None:
                 return
@@ -886,13 +898,13 @@ def create_app():
         )
 
         if card_number_input:
-            parsed_card_number = parse_text_filter(card_number_input, contains=True)
+            parsed_card_number = parse_card_number_filter(card_number_input)
             if parsed_card_number is not None:
                 card_query = {}
                 apply_filter(card_query, "card_number", parsed_card_number)
                 card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
             else:
-                flash("Card number filter is invalid.", "error")
+                flash("Card number must be full (format: ####-####-####-####) or valid JSON filter.", "error")
 
         review_query_pretty = json.dumps(review_query, ensure_ascii=False, indent=2, default=str)
         search_results_pretty = json.dumps(
