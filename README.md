@@ -198,6 +198,10 @@ curl -X PUT "http://localhost:8000/auth/login?username=alice"
 
 **IDOR (`/orders/<id>`):**
 ```bash
+# Dashboard сам после загрузки делает запросы:
+# GET /account/orders/ids -> далее GET /orders/<id> для каждого id
+# После этого можно руками перебирать id на /account/dashboard (IDOR order probe).
+
 curl "http://localhost:8000/orders/1"
 curl "http://localhost:8000/orders/2"
 ```
@@ -238,3 +242,5 @@ curl "http://localhost:8000/remote/include?url=https://example.org"
 - `admin / Riv3rN0rth!29`
 - `alice / Hightower7`
 - `bob / KestrelMoon84#`
+- `mira / Zx!9vQ2#Lm7@tP5$Hs1`
+- `niko / Qw#4Rp!8Tz@1Yv$6Nd2`

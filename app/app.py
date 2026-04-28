@@ -496,15 +496,22 @@ def create_app():
         with mysql_conn().cursor() as cur:
             cur.execute(f"SELECT id,username,email,role,bio FROM users WHERE id={uid}")
             user = cur.fetchone()
-            cur.execute(f"SELECT * FROM orders WHERE user_id={uid}")
-            orders = cur.fetchall()
             cur.execute(
                 "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
                 (uid,),
             )
             wishlist_items = cur.fetchall()
         user["role"] = role_from_cookie()
-        return render_template("dashboard.html", user=user, orders=orders, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+        return render_template("dashboard.html", user=user, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+
+    @app.route("/account/orders/ids")
+    @login_required
+    def account_order_ids():
+        uid = session.get("user_id")
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id FROM orders WHERE user_id=%s ORDER BY id", (uid,))
+            ids = [row["id"] for row in cur.fetchall()]
+        return jsonify({"order_ids": ids})
 
     @app.route("/account/profile", methods=["GET", "POST"])
     @login_required
@@ -1121,6 +1128,7 @@ def create_app():
                 "/shop/brands": {"get": {"summary": "List shop brands", "responses": {"200": {"description": "ok"}}}},
                 "/shop/deals": {"get": {"summary": "Current deals", "responses": {"200": {"description": "ok"}}}},
                 "/account/addresses": {"get": {"summary": "Address book", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Add address", "responses": {"200": {"description": "ok"}}}},
+                "/account/orders/ids": {"get": {"summary": "Current user order ids", "responses": {"200": {"description": "ok"}}}},
                 "/shipping/carrier/diagnostics": {"get": {"summary": "Carrier diagnostics page", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Run carrier diagnostics", "responses": {"200": {"description": "ok"}}}},
                 "/product/{pid}/reviews": {"post": {"summary": "Create product review", "responses": {"200": {"description": "ok"}}}},
                 "/product/{pid}/reviews/moderation": {"get": {"summary": "Reviews moderation dashboard", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Reviews moderation actions/filter", "responses": {"200": {"description": "ok"}}}},
