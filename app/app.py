@@ -14,7 +14,7 @@ import pymysql
 import requests
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from flask import flash, Flask, jsonify, make_response, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
@@ -331,7 +331,7 @@ def create_app():
             return redirect(url_for("login"))
 
         with mysql_conn().cursor() as cur:
-            cur.execute("SELECT id,username,role,twofa_secret FROM users WHERE id=%s", (uid,))
+            cur.execute("SELECT id,username,email,role,twofa_secret FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
         if not user:
             session.pop("pre_2fa_user", None)
@@ -358,6 +358,15 @@ def create_app():
             if not re.fullmatch(r"\d{4}", code):
                 flash("2FA code must be exactly 4 digits.", "error")
                 return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
+
+            # Intentional flaw for training: session becomes active before OTP verification.
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["active"] = True
+            session.pop("pre_2fa_user", None)
+            reset_login_rate_limit(user.get("username"))
+
             if code == current_code:
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
@@ -368,8 +377,25 @@ def create_app():
                 resp = redirect(url_for("dashboard"))
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp
-            flash("Invalid 2FA code.", "error")
-            return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
+
+            with mysql_conn().cursor() as cur:
+                cur.execute(
+                    "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
+                    (user["id"],),
+                )
+                wishlist_items = cur.fetchall()
+            user["role"] = role_from_cookie()
+            protected_preview = render_template(
+                "dashboard.html",
+                user=user,
+                wishlist_items=wishlist_items,
+                cart_count=len(session.get("cart", [])),
+            )
+            resp = make_response(protected_preview)
+            resp.status_code = 401
+            resp.headers["WWW-Authenticate"] = 'Basic realm="2FA required"'
+            resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
+            return resp
 
         return render_template("twofa.html", cart_count=len(session.get("cart", [])))
 
