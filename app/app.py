@@ -401,6 +401,17 @@ def create_app():
         flash("User role promoted to admin.", "success")
         return redirect(url_for("admin_php"))
 
+    @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
+    @admin_required
+    def admin_user_demote(user_id):
+        if user_id == session.get("user_id"):
+            flash("You cannot demote your own account from admin panel.", "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET role='user' WHERE id=%s", (user_id,))
+        flash("User role demoted to user.", "success")
+        return redirect(url_for("admin_php"))
+
     @app.route("/admin/users/<int:user_id>/password", methods=["POST"])
     @admin_required
     def admin_user_password_change(user_id):
@@ -1118,6 +1129,7 @@ def create_app():
                 "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/delete": {"post": {"summary": "Delete user", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/promote": {"post": {"summary": "Promote user to admin", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/demote": {"post": {"summary": "Demote user to regular role", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/password": {"post": {"summary": "Change user password", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/approve": {"post": {"summary": "Approve pending review", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/reject": {"post": {"summary": "Reject pending review", "responses": {"200": {"description": "ok"}}}},
