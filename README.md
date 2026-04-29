@@ -48,6 +48,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - OTP код для 2FA теперь динамический: меняется каждые 10 минут (4 цифры)
+- В `users.twofa_secret` хранится текущий валидный 2FA-код и обновляется сервером при логине/проверке 2FA
 - Login rate limiting: после 25000 попыток на один username вход блокируется на 5 минут; после успешного входа счётчик для этого username сбрасывается
 - OTP rate limiting: после 5 попыток ввода OTP аккаунт блокируется на 60 секунд
 - 2FA bypass (намеренная уязвимость): при наличии `pre_2fa_user` можно открыть `/account/dashboard` и получить полноценную сессию без проверки OTP
@@ -222,3 +223,5 @@ curl "http://localhost:8000/remote/include?url=https://example.org"
 - `bob / KestrelMoon84#`
 - `mira / Zx!9vQ2#Lm7@tP5$Hs1`
 - `niko / Qw#4Rp!8Tz@1Yv$6Nd2`
+
+> В БД пароли seed-пользователей хранятся в виде MD5-хешей (для учебного cracking-сценария через hashcat).

@@ -248,6 +248,19 @@ def create_app():
         digest = hashlib.sha256(f"{seed}:{window}:{app.secret_key}".encode()).hexdigest()
         return f"{int(digest[:8], 16) % 10000:04d}"
 
+    def refresh_user_otp_code(user):
+        if not user:
+            return ""
+        seed = f"{user.get('username', '')}:{user.get('id', '')}"
+        current_code = rolling_otp(seed)
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET twofa_secret=%s WHERE id=%s", (current_code, user["id"]))
+        user["twofa_secret"] = current_code
+        return current_code
+
+    def hash_password(raw_password):
+        return hashlib.md5((raw_password or "").encode()).hexdigest()
+
     def password_policy_errors(password):
         issues = []
         if len(password) < 10:
@@ -301,7 +314,7 @@ def create_app():
                 with mysql_conn().cursor() as cur:
                     cur.execute(
                         "INSERT INTO users (username,email,password) VALUES (%s,%s,%s)",
-                        (username, email, password),
+                        (username, email, hash_password(password)),
                     )
                 flash("Registration completed.", "success")
                 return redirect(url_for("login"))
@@ -338,21 +351,12 @@ def create_app():
             if not user:
                 flash("User does not exist.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 404
-            if user["password"] != password:
+            if user["password"] != hash_password(password):
                 flash("Wrong password.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 401
-            user_otp = (user.get("twofa_secret") or "").strip()
-            if user_otp:
-                session["pre_2fa_user"] = user["id"]
-                return redirect(url_for("verify_2fa"))
-            session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            session["role"] = user["role"]
-            session["active"] = True
-            reset_login_rate_limit(user.get("username"))
-            resp = redirect(url_for("dashboard"))
-            resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
-            return resp
+            refresh_user_otp_code(user)
+            session["pre_2fa_user"] = user["id"]
+            return redirect(url_for("verify_2fa"))
         return render_template("login.html", cart_count=len(session.get("cart", [])))
 
     @app.route("/auth/2fa", methods=["GET", "POST"])
@@ -368,7 +372,7 @@ def create_app():
             session.pop("pre_2fa_user", None)
             flash("2FA session expired. Please login again.", "error")
             return redirect(url_for("login"))
-        otp_seed = (user.get("twofa_secret") or "").strip()
+        otp_seed = refresh_user_otp_code(user)
         if not otp_seed:
             session["user_id"] = user["id"]
             session["username"] = user["username"]
@@ -380,7 +384,7 @@ def create_app():
             resp = redirect(url_for("dashboard"))
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
-        current_code = rolling_otp(otp_seed) if otp_seed else ""
+        current_code = otp_seed
 
         if request.method == "POST":
             code = request.form.get("code", "").strip()
@@ -489,7 +493,7 @@ def create_app():
             flash("Password policy failed: " + ", ".join(policy_issues), "error")
             return redirect(url_for("admin_php"))
         with mysql_conn().cursor() as cur:
-            cur.execute("UPDATE users SET password=%s WHERE id=%s", (new_password, user_id))
+            cur.execute("UPDATE users SET password=%s WHERE id=%s", (hash_password(new_password), user_id))
         flash("User password changed.", "success")
         return redirect(url_for("admin_php"))
 
@@ -550,7 +554,7 @@ def create_app():
                 flash("Password policy failed: " + ", ".join(policy_issues), "error")
                 return render_template("reset.html", token=token, cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
-                cur.execute("UPDATE users SET password=%s WHERE reset_token=%s", (new_password, token))
+                cur.execute("UPDATE users SET password=%s WHERE reset_token=%s", (hash_password(new_password), token))
             return render_template("notice.html", title="Password updated", message="You can now login with your new password.", kind="success")
         return render_template("reset.html", token=token, cart_count=len(session.get("cart", [])))
 
