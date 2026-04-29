@@ -7,7 +7,7 @@
     <p class="muted">Browse products, add items to your cart, and place orders. UI is realistic; backend intentionally includes training vulnerabilities.</p>
   </div>
   <div class="panel">
-    <form method="get">
+    <form method="get" action="/products/search">
       <input name="q" value="{{ q }}" placeholder="Search by product name">
       <select name="category">
         <option value="">All categories</option>
@@ -19,6 +19,12 @@
     </form>
   </div>
 </section>
+{% if search_query %}
+<section class="panel">
+  <p class="muted"><strong>SQL:</strong> {{search_query}}</p>
+  <p class="muted"><strong>Detected SQLi styles:</strong> {{ sqli_types|join(", ") if sqli_types else "none" }}</p>
+</section>
+{% endif %}
 <section class="grid">
   {% for p in products %}
   <article class="card">

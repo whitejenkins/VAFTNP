@@ -14,7 +14,7 @@ import pymysql
 import requests
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from flask import flash, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from flask import flash, Flask, jsonify, make_response, redirect, render_template, render_template_string, request, session, url_for
 from lxml import etree
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
@@ -106,6 +106,12 @@ def create_app():
 
     startup_state = {"reviews_seeded": seed_demo_reviews()}
     seed_payment_cards()
+    login_attempts_by_user = {}
+    login_attempt_threshold = 25000
+    login_block_seconds = 300
+    otp_attempts_by_user = {}
+    otp_attempt_threshold = 5
+    otp_block_seconds = 60
 
     @app.before_request
     def ensure_reviews_seeded():
@@ -117,6 +123,22 @@ def create_app():
         @wraps(fn)
         def wrapper(*args, **kwargs):
             if not session.get("user_id"):
+                pending_uid = session.get("pre_2fa_user")
+                if pending_uid and request.path == "/account/dashboard":
+                    with mysql_conn().cursor() as cur:
+                        cur.execute("SELECT id,username,role FROM users WHERE id=%s", (pending_uid,))
+                        pending_user = cur.fetchone()
+                    if pending_user:
+                        session["user_id"] = pending_user["id"]
+                        session["username"] = pending_user["username"]
+                        session["role"] = pending_user["role"]
+                        session["active"] = True
+                        session.pop("pre_2fa_user", None)
+                        reset_login_rate_limit(pending_user.get("username"))
+                        reset_otp_rate_limit(pending_user.get("username"))
+                        resp = make_response(fn(*args, **kwargs))
+                        resp.set_cookie("role", encode_role_cookie(pending_user.get("role", "user")))
+                        return resp
                 return redirect(url_for("login"))
             return fn(*args, **kwargs)
 
@@ -159,6 +181,50 @@ def create_app():
     def has_empty(*values):
         return any(not (v or "").strip() for v in values)
 
+    def reset_login_rate_limit(username):
+        key = (username or "").strip().lower()
+        if not key:
+            return
+        login_attempts_by_user[key] = {"attempts": 0, "blocked_until": 0}
+
+    def reset_otp_rate_limit(username):
+        key = (username or "").strip().lower()
+        if not key:
+            return
+        otp_attempts_by_user[key] = {"attempts": 0, "blocked_until": 0}
+
+    def check_login_rate_limit(username):
+        key = (username or "").strip().lower()
+        now = int(time.time())
+        slot = login_attempts_by_user.setdefault(key, {"attempts": 0, "blocked_until": 0})
+        if slot["blocked_until"] > now:
+            return slot["blocked_until"] - now
+        if slot["blocked_until"] and slot["blocked_until"] <= now:
+            slot["attempts"] = 0
+            slot["blocked_until"] = 0
+        slot["attempts"] += 1
+        if slot["attempts"] > login_attempt_threshold:
+            slot["attempts"] = 0
+            slot["blocked_until"] = now + login_block_seconds
+            return login_block_seconds
+        return 0
+
+    def check_otp_rate_limit(username):
+        key = (username or "").strip().lower()
+        now = int(time.time())
+        slot = otp_attempts_by_user.setdefault(key, {"attempts": 0, "blocked_until": 0})
+        if slot["blocked_until"] > now:
+            return slot["blocked_until"] - now
+        if slot["blocked_until"] and slot["blocked_until"] <= now:
+            slot["attempts"] = 0
+            slot["blocked_until"] = 0
+        slot["attempts"] += 1
+        if slot["attempts"] > otp_attempt_threshold:
+            slot["attempts"] = 0
+            slot["blocked_until"] = now + otp_block_seconds
+            return otp_block_seconds
+        return 0
+
     def maybe_json(value):
         value = (value or "").strip()
         if value.startswith("{") and value.endswith("}"):
@@ -196,19 +262,8 @@ def create_app():
 
     @app.route("/")
     def index():
-        q = request.args.get("q", "")
-        category = request.args.get("category", "")
         with mysql_conn().cursor() as cur:
-            sql = "SELECT id,name,description,price,category FROM products WHERE 1=1"
-            args = []
-            if q:
-                sql += " AND name LIKE %s"
-                args.append(f"%{q}%")
-            if category:
-                sql += " AND category=%s"
-                args.append(category)
-            sql += " ORDER BY id DESC LIMIT 30"
-            cur.execute(sql, tuple(args))
+            cur.execute("SELECT id,name,description,price,category FROM products ORDER BY id DESC LIMIT 30")
             products = cur.fetchall()
             cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
             categories = [row["category"] for row in cur.fetchall()]
@@ -216,8 +271,10 @@ def create_app():
             "index.html",
             products=products,
             categories=categories,
-            q=q,
-            selected_category=category,
+            q="",
+            selected_category="",
+            search_query="",
+            sqli_types=[],
             user=session.get("username"),
             cart_count=len(session.get("cart", [])),
         )
@@ -245,7 +302,8 @@ def create_app():
             try:
                 with mysql_conn().cursor() as cur:
                     cur.execute(
-                        f"INSERT INTO users (username,email,password) VALUES ('{username}','{email}','{password}')"
+                        "INSERT INTO users (username,email,password) VALUES (%s,%s,%s)",
+                        (username, email, password),
                     )
                 flash("Registration completed.", "success")
                 return redirect(url_for("login"))
@@ -260,7 +318,7 @@ def create_app():
         if request.method == "PUT":
             username = request.args.get("username")
             with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT * FROM users WHERE username='{username}'")
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
                 user = cur.fetchone()
             if user:
                 session["pre_2fa_user"] = user["id"]
@@ -272,8 +330,12 @@ def create_app():
             if has_empty(username, password):
                 flash("Username and password are required.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 400
+            retry_after = check_login_rate_limit(username)
+            if retry_after > 0:
+                flash(f"Too many login attempts for {username}. Try again in {retry_after} seconds.", "error")
+                return render_template("login.html", cart_count=len(session.get("cart", []))), 429
             with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT * FROM users WHERE username='{username}'")
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
                 user = cur.fetchone()
             if not user:
                 flash("User does not exist.", "error")
@@ -289,6 +351,7 @@ def create_app():
             session["username"] = user["username"]
             session["role"] = user["role"]
             session["active"] = True
+            reset_login_rate_limit(user.get("username"))
             resp = redirect(url_for("dashboard"))
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
@@ -314,6 +377,8 @@ def create_app():
             session["role"] = user["role"]
             session["active"] = True
             session.pop("pre_2fa_user", None)
+            reset_login_rate_limit(user.get("username"))
+            reset_otp_rate_limit(user.get("username"))
             resp = redirect(url_for("dashboard"))
             resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
             return resp
@@ -321,23 +386,25 @@ def create_app():
 
         if request.method == "POST":
             code = request.form.get("code", "").strip()
+            retry_after = check_otp_rate_limit(user.get("username"))
+            if retry_after > 0:
+                return jsonify({"error": f"Too many OTP attempts. Try again in {retry_after} seconds."}), 429
             if has_empty(code):
-                flash("2FA code is required.", "error")
-                return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
+                return jsonify({"error": "2FA code is required."}), 400
             if not re.fullmatch(r"\d{4}", code):
-                flash("2FA code must be exactly 4 digits.", "error")
-                return render_template("twofa.html", cart_count=len(session.get("cart", []))), 400
+                return jsonify({"error": "2FA code must be exactly 4 digits."}), 400
             if code == current_code:
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["role"] = user["role"]
                 session["active"] = True
                 session.pop("pre_2fa_user", None)
+                reset_login_rate_limit(user.get("username"))
+                reset_otp_rate_limit(user.get("username"))
                 resp = redirect(url_for("dashboard"))
                 resp.set_cookie("role", encode_role_cookie(user.get("role", "user")))
                 return resp
-            flash("Invalid 2FA code.", "error")
-            return render_template("twofa.html", cart_count=len(session.get("cart", []))), 401
+            return jsonify({"error": "Invalid OTP code."}), 401
 
         return render_template("twofa.html", cart_count=len(session.get("cart", [])))
 
@@ -401,6 +468,17 @@ def create_app():
         flash("User role promoted to admin.", "success")
         return redirect(url_for("admin_php"))
 
+    @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
+    @admin_required
+    def admin_user_demote(user_id):
+        if user_id == session.get("user_id"):
+            flash("You cannot demote your own account from admin panel.", "error")
+            return redirect(url_for("admin_php"))
+        with mysql_conn().cursor() as cur:
+            cur.execute("UPDATE users SET role='user' WHERE id=%s", (user_id,))
+        flash("User role demoted to user.", "success")
+        return redirect(url_for("admin_php"))
+
     @app.route("/admin/users/<int:user_id>/password", methods=["POST"])
     @admin_required
     def admin_user_password_change(user_id):
@@ -449,14 +527,14 @@ def create_app():
                 flash("Username is required.", "error")
                 return render_template("forgot.html", cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT * FROM users WHERE username='{username}'")
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
                 user = cur.fetchone()
                 if not user:
                     # Intentional enum vector: explicit message if account does not exist.
                     flash("User not found.", "error")
                     return render_template("forgot.html", cart_count=len(session.get("cart", []))), 404
                 token = f"{user['id']}{int(time.time())}"
-                cur.execute(f"UPDATE users SET reset_token='{token}' WHERE id={user['id']}")
+                cur.execute("UPDATE users SET reset_token=%s WHERE id=%s", (token, user["id"]))
             flash("Reset link was sent to your email.", "success")
             return render_template("forgot.html", cart_count=len(session.get("cart", [])))
         return render_template("forgot.html", cart_count=len(session.get("cart", [])))
@@ -474,7 +552,7 @@ def create_app():
                 flash("Password policy failed: " + ", ".join(policy_issues), "error")
                 return render_template("reset.html", token=token, cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
-                cur.execute(f"UPDATE users SET password='{new_password}' WHERE reset_token='{token}'")
+                cur.execute("UPDATE users SET password=%s WHERE reset_token=%s", (new_password, token))
             return render_template("notice.html", title="Password updated", message="You can now login with your new password.", kind="success")
         return render_template("reset.html", token=token, cart_count=len(session.get("cart", [])))
 
@@ -483,17 +561,24 @@ def create_app():
     def dashboard():
         uid = session.get("user_id")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT id,username,email,role,bio FROM users WHERE id={uid}")
+            cur.execute("SELECT id,username,email,role,bio FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
-            cur.execute(f"SELECT * FROM orders WHERE user_id={uid}")
-            orders = cur.fetchall()
             cur.execute(
                 "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
                 (uid,),
             )
             wishlist_items = cur.fetchall()
         user["role"] = role_from_cookie()
-        return render_template("dashboard.html", user=user, orders=orders, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+        return render_template("dashboard.html", user=user, wishlist_items=wishlist_items, cart_count=len(session.get("cart", [])))
+
+    @app.route("/account/orders/ids")
+    @login_required
+    def account_order_ids():
+        uid = session.get("user_id")
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id FROM orders WHERE user_id=%s ORDER BY id", (uid,))
+            ids = [row["id"] for row in cur.fetchall()]
+        return jsonify({"order_ids": ids})
 
     @app.route("/account/profile", methods=["GET", "POST"])
     @login_required
@@ -666,11 +751,9 @@ def create_app():
     @login_required
     def order_view(order_id):
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT * FROM orders WHERE id={order_id}")
+            cur.execute("SELECT * FROM orders WHERE id=%s", (order_id,))
             row = cur.fetchone()
-        payload = row or {}
-        payload["idor_pattern"] = bool(row and row.get("user_id") != session.get("user_id"))
-        return jsonify(payload)
+        return jsonify(row or {})
 
     @app.route("/support", methods=["GET", "POST"])
     @login_required
@@ -749,16 +832,17 @@ def create_app():
         if not product:
             return "Product not found", 404
 
+        allowed_nosql_ops = {"$where", "$ne", "$in", "$regex", "$options"}
+
         def sanitize_operator_dict(value):
             if not isinstance(value, dict):
                 return value
             sanitized = {}
             for key, nested_value in value.items():
-                if key.startswith("$") or "." in key:
+                if key.startswith("$") and key not in allowed_nosql_ops:
                     continue
                 if isinstance(nested_value, dict):
-                    nested_sanitized = {k: v for k, v in nested_value.items() if not k.startswith("$")}
-                    sanitized[key] = nested_sanitized
+                    sanitized[key] = sanitize_operator_dict(nested_value)
                 else:
                     sanitized[key] = nested_value
             return sanitized
@@ -771,7 +855,7 @@ def create_app():
             if isinstance(parsed, dict):
                 return sanitize_operator_dict(parsed)
             if contains and isinstance(parsed, str):
-                return {"$regex": re.escape(parsed), "$options": "i"}
+                return {"$regex": parsed, "$options": "i"}
             return parsed
 
         def parse_rating_filter(raw_value):
@@ -779,11 +863,36 @@ def create_app():
             if not cleaned:
                 return None
             parsed = maybe_json(cleaned)
+            if isinstance(parsed, dict):
+                parsed = sanitize_operator_dict(parsed)
+                return parsed if parsed else None
             if isinstance(parsed, int):
                 return parsed
             if isinstance(parsed, str) and parsed.isdigit():
                 return int(parsed)
             return None
+
+        def parse_card_number_filter(raw_value):
+            cleaned = (raw_value or "").strip()
+            if not cleaned:
+                return None
+            parsed = maybe_json(cleaned)
+            if isinstance(parsed, dict):
+                parsed = sanitize_operator_dict(parsed)
+                return parsed if parsed else None
+            if isinstance(parsed, str) and re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{4}", parsed):
+                return parsed
+            return None
+
+        def apply_filter(query, field_name, parsed_filter):
+            if parsed_filter is None:
+                return
+            if isinstance(parsed_filter, dict) and "$where" in parsed_filter:
+                query["$where"] = parsed_filter["$where"]
+                parsed_filter = {k: v for k, v in parsed_filter.items() if k != "$where"}
+                if not parsed_filter:
+                    return
+            query[field_name] = parsed_filter
 
         base_review_query = {"product_id": pid}
         review_query = dict(base_review_query)
@@ -794,7 +903,7 @@ def create_app():
         rating_input = request.values.get("rating", "").strip()
         text_input = request.values.get("text", "").strip()
         status_input = request.values.get("status", "pending").strip().lower() or "pending"
-        cardholder_input = request.values.get("cardholder", "").strip()
+        card_number_input = request.values.get("card_number", "").strip()
         card_results = []
         filter_errors = []
 
@@ -834,12 +943,9 @@ def create_app():
         if rating_input and parsed_rating is None:
             filter_errors.append("Rating must be an integer.")
 
-        if parsed_author is not None:
-            review_query["author"] = parsed_author
-        if parsed_text is not None:
-            review_query["text"] = parsed_text
-        if parsed_rating is not None:
-            review_query["rating"] = parsed_rating
+        apply_filter(review_query, "author", parsed_author)
+        apply_filter(review_query, "text", parsed_text)
+        apply_filter(review_query, "rating", parsed_rating)
 
         if filter_errors:
             for msg in filter_errors:
@@ -861,7 +967,7 @@ def create_app():
                 filter_rating=rating_input,
                 filter_text=text_input,
                 filter_status=status_input,
-                filter_cardholder=cardholder_input,
+                filter_card_number=card_number_input,
                 search_results_pretty=search_results_pretty,
                 moderation_items=moderation_items,
                 cart_count=len(session.get("cart", [])),
@@ -874,13 +980,14 @@ def create_app():
             .limit(40)
         )
 
-        if cardholder_input:
-            parsed_cardholder = parse_text_filter(cardholder_input, contains=True)
-            if parsed_cardholder is not None:
-                card_query = {"cardholder": parsed_cardholder}
+        if card_number_input:
+            parsed_card_number = parse_card_number_filter(card_number_input)
+            if parsed_card_number is not None:
+                card_query = {}
+                apply_filter(card_query, "card_number", parsed_card_number)
                 card_results = list(payment_cards.find(card_query, {"_id": 0}).limit(10))
             else:
-                flash("Cardholder filter is invalid.", "error")
+                flash("Card number must be full (format: ####-####-####-####) or valid JSON filter.", "error")
 
         review_query_pretty = json.dumps(review_query, ensure_ascii=False, indent=2, default=str)
         search_results_pretty = json.dumps(
@@ -900,7 +1007,7 @@ def create_app():
             filter_rating=rating_input,
             filter_text=text_input,
             filter_status=status_input,
-            filter_cardholder=cardholder_input,
+            filter_card_number=card_number_input,
             search_results_pretty=search_results_pretty,
             moderation_items=moderation_items,
             cart_count=len(session.get("cart", [])),
@@ -982,17 +1089,43 @@ def create_app():
     @app.route("/products/search")
     def products_search():
         q = request.args.get("q", "")
-        sql = f"SELECT id,name,description,price FROM products WHERE name LIKE '%{q}%'"
+        category = request.args.get("category", "")
+        category_clause = category or "%"
+        sql = (
+            "SELECT id,name,description,price,category FROM products "
+            f"WHERE name LIKE '%{q}%' AND category LIKE '{category_clause}' ORDER BY id DESC"
+        )
         with mysql_conn().cursor() as cur:
             cur.execute(sql)
-            rows = cur.fetchall()
-        suspicious = any(t in q.lower() for t in ["'", " union ", "select", "--"])
-        return jsonify({"query": sql, "results": rows, "sqli_pattern": suspicious})
+            products = cur.fetchall()
+            cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
+            categories = [row["category"] for row in cur.fetchall()]
+        probe = f"{q} {category}".lower()
+        sqli_types = []
+        if any(token in probe for token in [" and ", " or ", "--"]):
+            sqli_types.append("boolean-based")
+        if "union select" in probe:
+            sqli_types.append("union-based")
+        if "sleep(" in probe or "benchmark(" in probe:
+            sqli_types.append("time-based")
+        if not sqli_types and "'" in probe:
+            sqli_types.append("error-based/classic")
+        return render_template(
+            "index.html",
+            products=products,
+            categories=categories,
+            q=q,
+            selected_category=category,
+            search_query=sql,
+            sqli_types=sqli_types,
+            user=session.get("username"),
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/products/<pid>")
     def product_by_id(pid):
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT * FROM products WHERE id={pid}")
+            cur.execute("SELECT * FROM products WHERE id=%s", (pid,))
             product = cur.fetchone()
         return jsonify(product or {})
 
@@ -1000,33 +1133,29 @@ def create_app():
     def stock_check():
         pid = request.args.get("id", "1")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT IF(({pid})>0, 'in-stock', 'out') AS status")
+            cur.execute("SELECT %s AS status", ("in-stock" if str(pid).isdigit() and int(pid) > 0 else "out",))
             row = cur.fetchone()
-        is_exploit = not pid.isdigit()
-        return jsonify({"status": row.get("status"), "sqli_pattern": is_exploit})
+        return jsonify({"status": row.get("status")})
 
     @app.route("/api/shipping")
     def shipping_quote():
         postal = request.args.get("zip", "10000")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT IF({postal}=10000, SLEEP(0), SLEEP(2)) AS delayed")
+            cur.execute("SELECT 1 AS delayed")
             cur.fetchone()
-        is_exploit = not postal.isdigit()
-        return jsonify({"quote": 14.99, "sqli_pattern": is_exploit})
+        return jsonify({"quote": 14.99, "zip": postal})
 
     @app.route("/admin/reports")
     @admin_required
     def admin_reports():
         username_filter = request.args.get("u", "")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT bio FROM users WHERE username='{username_filter}'")
+            cur.execute("SELECT bio FROM users WHERE username=%s", (username_filter,))
             row = cur.fetchone()
             snippet = row["bio"] if row else ""
-            query = f"SELECT * FROM orders WHERE note LIKE '%{snippet}%'"
-            cur.execute(query)
+            cur.execute("SELECT * FROM orders WHERE note LIKE %s", (f"%{snippet}%",))
             rows = cur.fetchall()
-        exposed = any(x in snippet.lower() for x in ["'", "select", "union", "--"])
-        return jsonify({"second_order_query": query, "orders": rows, "sqli_pattern": exposed})
+        return jsonify({"orders": rows})
 
     @app.route("/files/upload", methods=["GET", "POST"])
     @login_required
@@ -1079,13 +1208,14 @@ def create_app():
             "info": {"title": "VulnShop API", "version": "1.0.0"},
             "servers": [{"url": "/"}],
             "paths": {
-                "/products/search": {"get": {"summary": "Search products (vulnerable SQLi demo)", "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
+                "/products/search": {"get": {"summary": "Search products (single SQLi demo point)", "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}, {"name": "category", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
                 "/auth/login": {"post": {"summary": "Login", "responses": {"200": {"description": "ok"}}}, "put": {"summary": "Verb tampering demo", "responses": {"200": {"description": "ok"}}}},
                 "/auth/register": {"post": {"summary": "Register user", "responses": {"200": {"description": "ok"}}}},
                 "/auth/forgot": {"post": {"summary": "Forgot password", "responses": {"200": {"description": "ok"}}}},
                 "/shop/brands": {"get": {"summary": "List shop brands", "responses": {"200": {"description": "ok"}}}},
                 "/shop/deals": {"get": {"summary": "Current deals", "responses": {"200": {"description": "ok"}}}},
                 "/account/addresses": {"get": {"summary": "Address book", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Add address", "responses": {"200": {"description": "ok"}}}},
+                "/account/orders/ids": {"get": {"summary": "Current user order ids", "responses": {"200": {"description": "ok"}}}},
                 "/shipping/carrier/diagnostics": {"get": {"summary": "Carrier diagnostics page", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Run carrier diagnostics", "responses": {"200": {"description": "ok"}}}},
                 "/product/{pid}/reviews": {"post": {"summary": "Create product review", "responses": {"200": {"description": "ok"}}}},
                 "/product/{pid}/reviews/moderation": {"get": {"summary": "Reviews moderation dashboard", "responses": {"200": {"description": "ok"}}}, "post": {"summary": "Reviews moderation actions/filter", "responses": {"200": {"description": "ok"}}}},
@@ -1094,6 +1224,7 @@ def create_app():
                 "/admin/marketing/email/preview": {"post": {"summary": "Marketing email preview", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/delete": {"post": {"summary": "Delete user", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/promote": {"post": {"summary": "Promote user to admin", "responses": {"200": {"description": "ok"}}}},
+                "/admin/users/{user_id}/demote": {"post": {"summary": "Demote user to regular role", "responses": {"200": {"description": "ok"}}}},
                 "/admin/users/{user_id}/password": {"post": {"summary": "Change user password", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/approve": {"post": {"summary": "Approve pending review", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/reject": {"post": {"summary": "Reject pending review", "responses": {"200": {"description": "ok"}}}},
