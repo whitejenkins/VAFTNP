@@ -13,9 +13,54 @@
   </p>
 
   <h3>Your orders</h3>
-  <ul>{% for o in orders %}<li>Order #{{o.id}} ${{o.total}} / Product {{o.product_id}}</li>{% endfor %}</ul>
+  <p class="muted">Recent orders are loaded automatically.</p>
+  <ul id="orders-list"></ul>
 
   <h3>Wishlist snapshot</h3>
   <ul>{% for w in wishlist_items %}<li>{{w.name}} — ${{w.price}}</li>{% endfor %}</ul>
 </div>
+<script>
+  async function fetchOrderById(orderId) {
+    const response = await fetch(`/orders/${orderId}`, { credentials: "same-origin" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  }
+
+  function renderOrderListItem(order) {
+    const li = document.createElement("li");
+    if (order && order.id) {
+      li.textContent = `Order #${order.id} $${order.total} / Product ${order.product_id}`;
+    } else {
+      li.textContent = "Order not found";
+    }
+    return li;
+  }
+
+  async function loadDashboardOrders() {
+    const listNode = document.getElementById("orders-list");
+    listNode.innerHTML = "<li>Loading...</li>";
+    try {
+      const idsResponse = await fetch("/account/orders/ids", { credentials: "same-origin" });
+      const idsPayload = await idsResponse.json();
+      const orderIds = Array.isArray(idsPayload.order_ids) ? idsPayload.order_ids : [];
+      listNode.innerHTML = "";
+      if (!orderIds.length) {
+        listNode.innerHTML = "<li>No orders yet.</li>";
+        return;
+      }
+      for (const orderId of orderIds) {
+        const orderPayload = await fetchOrderById(orderId);
+        listNode.appendChild(renderOrderListItem(orderPayload));
+      }
+    } catch (e) {
+      listNode.innerHTML = `<li>Failed to load orders: ${e.message}</li>`;
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    loadDashboardOrders();
+  });
+</script>
 {% endblock %}
