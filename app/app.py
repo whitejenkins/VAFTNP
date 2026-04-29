@@ -262,19 +262,8 @@ def create_app():
 
     @app.route("/")
     def index():
-        q = request.args.get("q", "")
-        category = request.args.get("category", "")
         with mysql_conn().cursor() as cur:
-            sql = "SELECT id,name,description,price,category FROM products WHERE 1=1"
-            args = []
-            if q:
-                sql += " AND name LIKE %s"
-                args.append(f"%{q}%")
-            if category:
-                sql += " AND category=%s"
-                args.append(category)
-            sql += " ORDER BY id DESC LIMIT 30"
-            cur.execute(sql, tuple(args))
+            cur.execute("SELECT id,name,description,price,category FROM products ORDER BY id DESC LIMIT 30")
             products = cur.fetchall()
             cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
             categories = [row["category"] for row in cur.fetchall()]
@@ -282,8 +271,10 @@ def create_app():
             "index.html",
             products=products,
             categories=categories,
-            q=q,
-            selected_category=category,
+            q="",
+            selected_category="",
+            search_query="",
+            sqli_types=[],
             user=session.get("username"),
             cart_count=len(session.get("cart", [])),
         )
@@ -311,7 +302,8 @@ def create_app():
             try:
                 with mysql_conn().cursor() as cur:
                     cur.execute(
-                        f"INSERT INTO users (username,email,password) VALUES ('{username}','{email}','{password}')"
+                        "INSERT INTO users (username,email,password) VALUES (%s,%s,%s)",
+                        (username, email, password),
                     )
                 flash("Registration completed.", "success")
                 return redirect(url_for("login"))
@@ -326,7 +318,7 @@ def create_app():
         if request.method == "PUT":
             username = request.args.get("username")
             with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT * FROM users WHERE username='{username}'")
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
                 user = cur.fetchone()
             if user:
                 session["pre_2fa_user"] = user["id"]
@@ -343,7 +335,7 @@ def create_app():
                 flash(f"Too many login attempts for {username}. Try again in {retry_after} seconds.", "error")
                 return render_template("login.html", cart_count=len(session.get("cart", []))), 429
             with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT * FROM users WHERE username='{username}'")
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
                 user = cur.fetchone()
             if not user:
                 flash("User does not exist.", "error")
@@ -535,14 +527,14 @@ def create_app():
                 flash("Username is required.", "error")
                 return render_template("forgot.html", cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
-                cur.execute(f"SELECT * FROM users WHERE username='{username}'")
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
                 user = cur.fetchone()
                 if not user:
                     # Intentional enum vector: explicit message if account does not exist.
                     flash("User not found.", "error")
                     return render_template("forgot.html", cart_count=len(session.get("cart", []))), 404
                 token = f"{user['id']}{int(time.time())}"
-                cur.execute(f"UPDATE users SET reset_token='{token}' WHERE id={user['id']}")
+                cur.execute("UPDATE users SET reset_token=%s WHERE id=%s", (token, user["id"]))
             flash("Reset link was sent to your email.", "success")
             return render_template("forgot.html", cart_count=len(session.get("cart", [])))
         return render_template("forgot.html", cart_count=len(session.get("cart", [])))
@@ -560,7 +552,7 @@ def create_app():
                 flash("Password policy failed: " + ", ".join(policy_issues), "error")
                 return render_template("reset.html", token=token, cart_count=len(session.get("cart", []))), 400
             with mysql_conn().cursor() as cur:
-                cur.execute(f"UPDATE users SET password='{new_password}' WHERE reset_token='{token}'")
+                cur.execute("UPDATE users SET password=%s WHERE reset_token=%s", (new_password, token))
             return render_template("notice.html", title="Password updated", message="You can now login with your new password.", kind="success")
         return render_template("reset.html", token=token, cart_count=len(session.get("cart", [])))
 
@@ -569,7 +561,7 @@ def create_app():
     def dashboard():
         uid = session.get("user_id")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT id,username,email,role,bio FROM users WHERE id={uid}")
+            cur.execute("SELECT id,username,email,role,bio FROM users WHERE id=%s", (uid,))
             user = cur.fetchone()
             cur.execute(
                 "SELECT p.id,p.name,p.price FROM wishlists w JOIN products p ON p.id=w.product_id WHERE w.user_id=%s ORDER BY w.created_at DESC",
@@ -759,7 +751,7 @@ def create_app():
     @login_required
     def order_view(order_id):
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT * FROM orders WHERE id={order_id}")
+            cur.execute("SELECT * FROM orders WHERE id=%s", (order_id,))
             row = cur.fetchone()
         return jsonify(row or {})
 
@@ -1097,17 +1089,43 @@ def create_app():
     @app.route("/products/search")
     def products_search():
         q = request.args.get("q", "")
-        sql = f"SELECT id,name,description,price FROM products WHERE name LIKE '%{q}%'"
+        category = request.args.get("category", "")
+        category_clause = category or "%"
+        sql = (
+            "SELECT id,name,description,price,category FROM products "
+            f"WHERE name LIKE '%{q}%' AND category LIKE '{category_clause}' ORDER BY id DESC"
+        )
         with mysql_conn().cursor() as cur:
             cur.execute(sql)
-            rows = cur.fetchall()
-        suspicious = any(t in q.lower() for t in ["'", " union ", "select", "--"])
-        return jsonify({"query": sql, "results": rows, "sqli_pattern": suspicious})
+            products = cur.fetchall()
+            cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
+            categories = [row["category"] for row in cur.fetchall()]
+        probe = f"{q} {category}".lower()
+        sqli_types = []
+        if any(token in probe for token in [" and ", " or ", "--"]):
+            sqli_types.append("boolean-based")
+        if "union select" in probe:
+            sqli_types.append("union-based")
+        if "sleep(" in probe or "benchmark(" in probe:
+            sqli_types.append("time-based")
+        if not sqli_types and "'" in probe:
+            sqli_types.append("error-based/classic")
+        return render_template(
+            "index.html",
+            products=products,
+            categories=categories,
+            q=q,
+            selected_category=category,
+            search_query=sql,
+            sqli_types=sqli_types,
+            user=session.get("username"),
+            cart_count=len(session.get("cart", [])),
+        )
 
     @app.route("/products/<pid>")
     def product_by_id(pid):
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT * FROM products WHERE id={pid}")
+            cur.execute("SELECT * FROM products WHERE id=%s", (pid,))
             product = cur.fetchone()
         return jsonify(product or {})
 
@@ -1115,33 +1133,29 @@ def create_app():
     def stock_check():
         pid = request.args.get("id", "1")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT IF(({pid})>0, 'in-stock', 'out') AS status")
+            cur.execute("SELECT %s AS status", ("in-stock" if str(pid).isdigit() and int(pid) > 0 else "out",))
             row = cur.fetchone()
-        is_exploit = not pid.isdigit()
-        return jsonify({"status": row.get("status"), "sqli_pattern": is_exploit})
+        return jsonify({"status": row.get("status")})
 
     @app.route("/api/shipping")
     def shipping_quote():
         postal = request.args.get("zip", "10000")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT IF({postal}=10000, SLEEP(0), SLEEP(2)) AS delayed")
+            cur.execute("SELECT 1 AS delayed")
             cur.fetchone()
-        is_exploit = not postal.isdigit()
-        return jsonify({"quote": 14.99, "sqli_pattern": is_exploit})
+        return jsonify({"quote": 14.99, "zip": postal})
 
     @app.route("/admin/reports")
     @admin_required
     def admin_reports():
         username_filter = request.args.get("u", "")
         with mysql_conn().cursor() as cur:
-            cur.execute(f"SELECT bio FROM users WHERE username='{username_filter}'")
+            cur.execute("SELECT bio FROM users WHERE username=%s", (username_filter,))
             row = cur.fetchone()
             snippet = row["bio"] if row else ""
-            query = f"SELECT * FROM orders WHERE note LIKE '%{snippet}%'"
-            cur.execute(query)
+            cur.execute("SELECT * FROM orders WHERE note LIKE %s", (f"%{snippet}%",))
             rows = cur.fetchall()
-        exposed = any(x in snippet.lower() for x in ["'", "select", "union", "--"])
-        return jsonify({"second_order_query": query, "orders": rows, "sqli_pattern": exposed})
+        return jsonify({"orders": rows})
 
     @app.route("/files/upload", methods=["GET", "POST"])
     @login_required
@@ -1194,7 +1208,7 @@ def create_app():
             "info": {"title": "VulnShop API", "version": "1.0.0"},
             "servers": [{"url": "/"}],
             "paths": {
-                "/products/search": {"get": {"summary": "Search products (vulnerable SQLi demo)", "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
+                "/products/search": {"get": {"summary": "Search products (single SQLi demo point)", "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}, {"name": "category", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "ok"}}}},
                 "/auth/login": {"post": {"summary": "Login", "responses": {"200": {"description": "ok"}}}, "put": {"summary": "Verb tampering demo", "responses": {"200": {"description": "ok"}}}},
                 "/auth/register": {"post": {"summary": "Register user", "responses": {"200": {"description": "ok"}}}},
                 "/auth/forgot": {"post": {"summary": "Forgot password", "responses": {"200": {"description": "ok"}}}},
