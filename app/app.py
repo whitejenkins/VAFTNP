@@ -112,12 +112,15 @@ def create_app():
     otp_attempts_by_user = {}
     otp_attempt_threshold = 5
     otp_block_seconds = 60
+    otp_window_state = {"window": None}
 
     @app.before_request
     def ensure_reviews_seeded():
         if startup_state["reviews_seeded"]:
+            sync_all_twofa_codes()
             return
         startup_state["reviews_seeded"] = seed_demo_reviews()
+        sync_all_twofa_codes()
 
     def login_required(fn):
         @wraps(fn)
@@ -257,6 +260,19 @@ def create_app():
             cur.execute("UPDATE users SET twofa_secret=%s WHERE id=%s", (current_code, user["id"]))
         user["twofa_secret"] = current_code
         return current_code
+
+    def sync_all_twofa_codes():
+        now_window = int(time.time()) // 600
+        if otp_window_state["window"] == now_window:
+            return
+        with mysql_conn().cursor() as cur:
+            cur.execute("SELECT id,username FROM users ORDER BY id")
+            users = cur.fetchall()
+            for u in users:
+                seed = f"{u.get('username', '')}:{u.get('id', '')}"
+                code = rolling_otp(seed)
+                cur.execute("UPDATE users SET twofa_secret=%s WHERE id=%s", (code, u["id"]))
+        otp_window_state["window"] = now_window
 
     def hash_password(raw_password):
         return hashlib.md5((raw_password or "").encode()).hexdigest()

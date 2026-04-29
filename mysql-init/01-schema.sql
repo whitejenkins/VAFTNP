@@ -42,12 +42,12 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO users (username,email,password,role,twofa_secret,bio) VALUES
-('admin','admin@shop.local','5f2481ab267d55a011d5ca56af2f09e3','admin','0000','I am admin'),
-('alice','alice@shop.local','19cd62ee0e1eb7d09f8626f7b6104cee','user','0000','hello'),
-('bob','bob@shop.local','8d51fc8ef5e64989d1d142d0c04edd41','user','0000','safe user'),
-('mira','mira@shop.local','eedf7968ab3fc97499fa87924932531a','user','0000','qa account'),
-('niko','niko@shop.local','c8dd1245071361874f350c270d13faca','user','0000','sales account')
+INSERT INTO users (username,email,password,role,twofa_secret,reset_token,bio) VALUES
+('admin','admin@shop.local','5f2481ab267d55a011d5ca56af2f09e3','admin','0000','rst-100001','I am admin'),
+('alice','alice@shop.local','19cd62ee0e1eb7d09f8626f7b6104cee','user','0000','rst-100002','hello'),
+('bob','bob@shop.local','8d51fc8ef5e64989d1d142d0c04edd41','user','0000','rst-100003','safe user'),
+('mira','mira@shop.local','eedf7968ab3fc97499fa87924932531a','user','0000','rst-100004','qa account'),
+('niko','niko@shop.local','c8dd1245071361874f350c270d13faca','user','0000','rst-100005','sales account')
 ON DUPLICATE KEY UPDATE username=username;
 
 INSERT INTO products (name,description,price,category) VALUES
