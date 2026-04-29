@@ -7,7 +7,7 @@
     <p class="muted">Browse products, add items to your cart, and place orders. UI is realistic; backend intentionally includes training vulnerabilities.</p>
   </div>
   <div class="panel">
-    <form method="get">
+    <form method="get" action="/products/search">
       <input name="q" value="{{ q }}" placeholder="Search by product name">
       <select name="category">
         <option value="">All categories</option>
