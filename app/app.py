@@ -273,8 +273,6 @@ def create_app():
             categories=categories,
             q="",
             selected_category="",
-            search_query="",
-            sqli_types=[],
             user=session.get("username"),
             cart_count=len(session.get("cart", [])),
         )
@@ -1100,24 +1098,12 @@ def create_app():
             products = cur.fetchall()
             cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
             categories = [row["category"] for row in cur.fetchall()]
-        probe = f"{q} {category}".lower()
-        sqli_types = []
-        if any(token in probe for token in [" and ", " or ", "--"]):
-            sqli_types.append("boolean-based")
-        if "union select" in probe:
-            sqli_types.append("union-based")
-        if "sleep(" in probe or "benchmark(" in probe:
-            sqli_types.append("time-based")
-        if not sqli_types and "'" in probe:
-            sqli_types.append("error-based/classic")
         return render_template(
             "index.html",
             products=products,
             categories=categories,
             q=q,
             selected_category=category,
-            search_query=sql,
-            sqli_types=sqli_types,
             user=session.get("username"),
             cart_count=len(session.get("cart", [])),
         )
