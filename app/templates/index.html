@@ -19,6 +19,12 @@
     </form>
   </div>
 </section>
+{% if search_query %}
+<section class="panel">
+  <p class="muted"><strong>SQL:</strong> {{search_query}}</p>
+  <p class="muted"><strong>Detected SQLi styles:</strong> {{ sqli_types|join(", ") if sqli_types else "none" }}</p>
+</section>
+{% endif %}
 <section class="grid">
   {% for p in products %}
   <article class="card">
