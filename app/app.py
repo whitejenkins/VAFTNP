@@ -33,13 +33,26 @@ def create_app():
         "autocommit": True,
         "cursorclass": pymysql.cursors.DictCursor,
     }
+    mysql_state = {"conn": None}
 
     mongo = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
     reviews = mongo.vulnshop.reviews
     payment_cards = mongo.vulnshop.payment_cards
 
     def mysql_conn():
-        return pymysql.connect(**mysql_conf)
+        conn = mysql_state.get("conn")
+        if conn is not None:
+            try:
+                conn.ping(reconnect=True)
+                return conn
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        conn = pymysql.connect(**mysql_conf)
+        mysql_state["conn"] = conn
+        return conn
 
     def seed_demo_reviews():
         demo_authors = ["alice", "bob", "charlie", "diana", "eve", "frank"]
@@ -1111,10 +1124,11 @@ def create_app():
         category_clause = category or "%"
         sql = (
             "SELECT id,name,description,price,category FROM products "
-            f"WHERE name LIKE '%{q}%' AND category LIKE '{category_clause}' ORDER BY id DESC"
+            "WHERE name LIKE %s "
+            f"AND category LIKE '{category_clause}' ORDER BY id DESC"
         )
         with mysql_conn().cursor() as cur:
-            cur.execute(sql)
+            cur.execute(sql, (f"%{q}%",))
             products = cur.fetchall()
             cur.execute("SELECT DISTINCT category FROM products ORDER BY category")
             categories = [row["category"] for row in cur.fetchall()]

