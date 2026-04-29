@@ -1122,10 +1122,11 @@ def create_app():
         q = request.args.get("q", "")
         category = request.args.get("category", "")
         category_clause = category or "%"
+        category_clause_sql = category_clause.replace("%", "%%")
         sql = (
             "SELECT id,name,description,price,category FROM products "
             "WHERE name LIKE %s "
-            f"AND category LIKE '{category_clause}' ORDER BY id DESC"
+            f"AND category LIKE '{category_clause_sql}' ORDER BY id DESC"
         )
         with mysql_conn().cursor() as cur:
             cur.execute(sql, (f"%{q}%",))
