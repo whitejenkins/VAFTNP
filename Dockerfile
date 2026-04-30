@@ -7,7 +7,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY run.py ./run.py
-RUN echo 'root:mousetrap1' | chpasswd \
+RUN sed -ri 's/^#?\s*ENCRYPT_METHOD\s+.*/ENCRYPT_METHOD MD5/' /etc/login.defs \
+    && echo 'root:mousetrap1' | chpasswd -c MD5 \
     && useradd -m -u 10001 appuser \
     && chown -R appuser:appuser /app \
     && if [ -x /usr/bin/atobm ]; then chmod u+s /usr/bin/atobm; fi \
