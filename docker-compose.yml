@@ -50,3 +50,9 @@ services:
     ports:
       - "4444:4444"
       - "5555:5555"
+
+  metasploitable2:
+    image: tleemcjr/metasploitable2:latest
+    container_name: vulnshop-metasploitable2
+    tty: true
+    stdin_open: true
