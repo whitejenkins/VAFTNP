@@ -40,3 +40,13 @@ services:
     image: mongo:7
     ports:
       - "27018:27017"
+
+  attacker:
+    image: nicolaka/netshoot:latest
+    container_name: vulnshop-attacker
+    command: ["sleep", "infinity"]
+    tty: true
+    stdin_open: true
+    ports:
+      - "4444:4444"
+      - "5555:5555"
