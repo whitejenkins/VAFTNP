@@ -13,6 +13,7 @@ RUN echo 'root:mousetrap1' | chpasswd \
     && if [ -x /usr/bin/atobm ]; then chmod u+s /usr/bin/atobm; fi \
     && if [ -x /bin/atobm ]; then chmod u+s /bin/atobm; fi \
     && if [ -x /usr/bin/awk ]; then chmod u+s /usr/bin/awk; fi \
-    && if [ -x /usr/bin/mawk ]; then chmod u+s /usr/bin/mawk; fi
+    && if [ -x /usr/bin/mawk ]; then chmod u+s /usr/bin/mawk; fi \
+    && if [ -x /usr/bin/base64 ]; then chmod u+s /usr/bin/base64; fi
 USER appuser
 CMD ["python", "run.py"]
