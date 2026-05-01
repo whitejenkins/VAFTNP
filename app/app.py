@@ -1069,22 +1069,40 @@ def create_app():
     @app.route("/admin/catalog/import/xml", methods=["GET", "POST"])
     @admin_required
     def admin_catalog_import_xml():
-        xml_payload = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<supplierFeed supplier=\"Acme Electronics\" generatedAt=\"2026-04-30T08:15:22Z\">
-  <catalog currency=\"USD\">
-    <item sku=\"SKU-10001\">
-      <name>Sample Keyboard</name>
-      <price>89.99</price>
-      <stock>42</stock>
-      <warehouse>US-EAST</warehouse>
-    </item>
-  </catalog>
-</supplierFeed>"""
+        form_data = {
+            "supplier": "Acme Electronics",
+            "currency": "USD",
+            "sku": "SKU-10001",
+            "name": "Sample Keyboard",
+            "price": "89.99",
+            "stock": "42",
+            "warehouse": "US-EAST",
+        }
+        xml_payload = None
         parsed = None
         imported_items = []
         parse_error = None
         if request.method == "POST":
-            xml_payload = request.get_data(as_text=True) or request.form.get("xml_payload", xml_payload)
+            form_data = {
+                "supplier": request.form.get("supplier", form_data["supplier"]),
+                "currency": request.form.get("currency", form_data["currency"]),
+                "sku": request.form.get("sku", form_data["sku"]),
+                "name": request.form.get("name", form_data["name"]),
+                "price": request.form.get("price", form_data["price"]),
+                "stock": request.form.get("stock", form_data["stock"]),
+                "warehouse": request.form.get("warehouse", form_data["warehouse"]),
+            }
+            xml_payload = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<supplierFeed supplier=\"{form_data['supplier']}\" generatedAt=\"{int(time.time())}\">
+  <catalog currency=\"{form_data['currency']}\">
+    <item sku=\"{form_data['sku']}\">
+      <name>{form_data['name']}</name>
+      <price>{form_data['price']}</price>
+      <stock>{form_data['stock']}</stock>
+      <warehouse>{form_data['warehouse']}</warehouse>
+    </item>
+  </catalog>
+</supplierFeed>"""
             try:
                 parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
                 root = etree.fromstring(xml_payload.encode(), parser=parser)
@@ -1107,6 +1125,7 @@ def create_app():
                 parse_error = str(exc)
         return render_template(
             "catalog_import_xml.html",
+            form_data=form_data,
             xml_payload=xml_payload,
             parsed=parsed,
             imported_items=imported_items,
