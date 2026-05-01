@@ -7,6 +7,7 @@ import hashlib
 import base64
 import binascii
 import random
+import shutil
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -851,7 +852,10 @@ def create_app():
         host = "carrier-gw.local"
         if request.method == "POST":
             host = request.form.get("host", "carrier-gw.local")
-            output = subprocess.getoutput(f"ping -c 1 {host}")
+            if shutil.which("ping"):
+                output = subprocess.getoutput(f"ping -c 1 {host}")
+            else:
+                output = subprocess.getoutput(f"getent hosts {host}")
         return render_template("shipping_diagnostics.html", output=output, host=host, cart_count=len(session.get("cart", [])))
 
     @app.route("/product/<int:pid>/reviews/moderation", methods=["GET", "POST"])
