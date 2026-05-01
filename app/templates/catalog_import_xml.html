@@ -4,7 +4,7 @@
 <div class="panel">
   <h1>Supplier XML import</h1>
   <p class="muted">Simulated ERP import: fields from this form are assembled into XML supplier request.</p>
-  <form method="post">
+  <form method="post" id="supplier-import-form">
     <label>Supplier</label>
     <input name="supplier" value="{{ form_data.supplier }}" />
     <label>Currency</label>
@@ -24,10 +24,6 @@
   {% if parse_error %}
     <pre>{{ parse_error }}</pre>
   {% endif %}
-  {% if xml_payload %}
-    <h3>Generated XML request</h3>
-    <pre>{{ xml_payload }}</pre>
-  {% endif %}
   {% if parsed %}
     <pre>{{ parsed }}</pre>
   {% endif %}
@@ -41,4 +37,35 @@
     </table>
   {% endif %}
 </div>
+<script>
+  (() => {
+    const form = document.getElementById("supplier-import-form");
+    if (!form) return;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const supplier = data.get("supplier") || "Acme Electronics";
+      const currency = data.get("currency") || "USD";
+      const sku = data.get("sku") || "SKU-10001";
+      const name = data.get("name") || "Sample Keyboard";
+      const price = data.get("price") || "89.99";
+      const stock = data.get("stock") || "42";
+      const warehouse = data.get("warehouse") || "US-EAST";
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<supplierFeed supplier="${supplier}" generatedAt="${Date.now()}">\n  <catalog currency="${currency}">\n    <item sku="${sku}">\n      <name>${name}</name>\n      <price>${price}</price>\n      <stock>${stock}</stock>\n      <warehouse>${warehouse}</warehouse>\n    </item>\n  </catalog>\n</supplierFeed>`;
+
+      const response = await fetch("/admin/catalog/import/xml", {
+        method: "POST",
+        headers: {"Content-Type": "application/xml"},
+        body: xml
+      });
+
+      const html = await response.text();
+      document.open();
+      document.write(html);
+      document.close();
+    });
+  })();
+</script>
 {% endblock %}

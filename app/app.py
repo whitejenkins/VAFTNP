@@ -1083,26 +1083,7 @@ def create_app():
         imported_items = []
         parse_error = None
         if request.method == "POST":
-            form_data = {
-                "supplier": request.form.get("supplier", form_data["supplier"]),
-                "currency": request.form.get("currency", form_data["currency"]),
-                "sku": request.form.get("sku", form_data["sku"]),
-                "name": request.form.get("name", form_data["name"]),
-                "price": request.form.get("price", form_data["price"]),
-                "stock": request.form.get("stock", form_data["stock"]),
-                "warehouse": request.form.get("warehouse", form_data["warehouse"]),
-            }
-            xml_payload = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<supplierFeed supplier=\"{form_data['supplier']}\" generatedAt=\"{int(time.time())}\">
-  <catalog currency=\"{form_data['currency']}\">
-    <item sku=\"{form_data['sku']}\">
-      <name>{form_data['name']}</name>
-      <price>{form_data['price']}</price>
-      <stock>{form_data['stock']}</stock>
-      <warehouse>{form_data['warehouse']}</warehouse>
-    </item>
-  </catalog>
-</supplierFeed>"""
+            xml_payload = request.get_data(as_text=True)
             try:
                 parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
                 root = etree.fromstring(xml_payload.encode(), parser=parser)
@@ -1121,6 +1102,16 @@ def create_app():
                             "warehouse": (item.findtext("warehouse") or "").strip() or "n/a",
                         }
                     )
+                if imported_items:
+                    form_data = {
+                        "supplier": root.attrib.get("supplier", form_data["supplier"]),
+                        "currency": root.find(".//catalog").attrib.get("currency", form_data["currency"]) if root.find(".//catalog") is not None else form_data["currency"],
+                        "sku": imported_items[0]["sku"],
+                        "name": imported_items[0]["name"],
+                        "price": imported_items[0]["price"],
+                        "stock": imported_items[0]["stock"],
+                        "warehouse": imported_items[0]["warehouse"],
+                    }
             except Exception as exc:
                 parse_error = str(exc)
         return render_template(
