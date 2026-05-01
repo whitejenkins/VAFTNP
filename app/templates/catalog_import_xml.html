@@ -3,20 +3,24 @@
 {% block content %}
 <div class="panel">
   <h1>Supplier XML import</h1>
-  <p class="muted">Upload supplier feed to sync electronic products.</p>
-  <form method="post">
+  <p class="muted">Endpoint for supplier ERP feed import. Parser expects raw XML body.</p>
+  <p class="muted"><code>POST /admin/catalog/import/xml</code> with <code>Content-Type: application/xml</code></p>
+  <form method="post" enctype="text/plain">
     <textarea name="xml_payload" rows="8">{{ xml_payload }}</textarea>
-    <button class="btn">Parse feed</button>
+    <button class="btn">Parse sample payload</button>
   </form>
+  {% if parse_error %}
+    <pre>{{ parse_error }}</pre>
+  {% endif %}
   {% if parsed %}
     <pre>{{ parsed }}</pre>
   {% endif %}
   {% if imported_items %}
     <h3>Imported positions preview</h3>
     <table class="table">
-      <tr><th>Name</th><th>Price</th></tr>
+      <tr><th>SKU</th><th>Name</th><th>Price</th><th>Stock</th><th>Warehouse</th></tr>
       {% for item in imported_items %}
-      <tr><td>{{ item.name }}</td><td>{{ item.price }}</td></tr>
+      <tr><td>{{ item.sku }}</td><td>{{ item.name }}</td><td>{{ item.price }}</td><td>{{ item.stock }}</td><td>{{ item.warehouse }}</td></tr>
       {% endfor %}
     </table>
   {% endif %}
