@@ -15,6 +15,9 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 
 Если видите ошибку подключения к MySQL с `caching_sha2_password`, убедитесь, что образ `web` пересобран с актуальным `requirements.txt` (в проект добавлен пакет `cryptography`).
 
+## Attack chain
+<img width="2566" height="1081" alt="Diagram" src="https://github.com/user-attachments/assets/71998f35-95f2-4940-8485-e9f8a88d927d" />
+
 ## Архитектура
 - `web` — Flask приложение.
 - `mysql` — основная SQL БД.
