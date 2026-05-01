@@ -1069,26 +1069,67 @@ def create_app():
     @app.route("/admin/catalog/import/xml", methods=["GET", "POST"])
     @admin_required
     def admin_catalog_import_xml():
-        xml_payload = "<products><item><name>Sample</name></item></products>"
+        form_data = {
+            "supplier": "Acme Electronics",
+            "currency": "USD",
+            "sku": "SKU-10001",
+            "name": "Sample Keyboard",
+            "price": "89.99",
+            "stock": "42",
+            "warehouse": "US-EAST",
+        }
+        xml_payload = None
         parsed = None
         imported_items = []
+        parse_error = None
         if request.method == "POST":
-            xml_payload = request.form.get("xml_payload", xml_payload)
-            parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
-            root = etree.fromstring(xml_payload.encode(), parser=parser)
-            parsed = {"root": root.tag, "text": root.text}
-            for item in root.findall(".//item"):
-                imported_items.append(
-                    {
-                        "name": (item.findtext("name") or "").strip() or "Untitled",
-                        "price": (item.findtext("price") or "0").strip(),
-                    }
-                )
+            form_data = {
+                "supplier": request.form.get("supplier", form_data["supplier"]),
+                "currency": request.form.get("currency", form_data["currency"]),
+                "sku": request.form.get("sku", form_data["sku"]),
+                "name": request.form.get("name", form_data["name"]),
+                "price": request.form.get("price", form_data["price"]),
+                "stock": request.form.get("stock", form_data["stock"]),
+                "warehouse": request.form.get("warehouse", form_data["warehouse"]),
+            }
+            xml_payload = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<supplierFeed supplier=\"{form_data['supplier']}\" generatedAt=\"{int(time.time())}\">
+  <catalog currency=\"{form_data['currency']}\">
+    <item sku=\"{form_data['sku']}\">
+      <name>{form_data['name']}</name>
+      <price>{form_data['price']}</price>
+      <stock>{form_data['stock']}</stock>
+      <warehouse>{form_data['warehouse']}</warehouse>
+    </item>
+  </catalog>
+</supplierFeed>"""
+            try:
+                parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
+                root = etree.fromstring(xml_payload.encode(), parser=parser)
+                parsed = {
+                    "supplier": root.attrib.get("supplier", "unknown"),
+                    "generated_at": root.attrib.get("generatedAt", ""),
+                    "root": root.tag,
+                }
+                for item in root.findall(".//item"):
+                    imported_items.append(
+                        {
+                            "sku": (item.attrib.get("sku") or "").strip() or "n/a",
+                            "name": (item.findtext("name") or "").strip() or "Untitled",
+                            "price": (item.findtext("price") or "0").strip(),
+                            "stock": (item.findtext("stock") or "0").strip(),
+                            "warehouse": (item.findtext("warehouse") or "").strip() or "n/a",
+                        }
+                    )
+            except Exception as exc:
+                parse_error = str(exc)
         return render_template(
             "catalog_import_xml.html",
+            form_data=form_data,
             xml_payload=xml_payload,
             parsed=parsed,
             imported_items=imported_items,
+            parse_error=parse_error,
             cart_count=len(session.get("cart", [])),
         )
 

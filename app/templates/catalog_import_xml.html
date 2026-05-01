@@ -3,20 +3,40 @@
 {% block content %}
 <div class="panel">
   <h1>Supplier XML import</h1>
-  <p class="muted">Upload supplier feed to sync electronic products.</p>
+  <p class="muted">Simulated ERP import: fields from this form are assembled into XML supplier request.</p>
   <form method="post">
-    <textarea name="xml_payload" rows="8">{{ xml_payload }}</textarea>
-    <button class="btn">Parse feed</button>
+    <label>Supplier</label>
+    <input name="supplier" value="{{ form_data.supplier }}" />
+    <label>Currency</label>
+    <input name="currency" value="{{ form_data.currency }}" />
+    <label>SKU</label>
+    <input name="sku" value="{{ form_data.sku }}" />
+    <label>Name</label>
+    <input name="name" value="{{ form_data.name }}" />
+    <label>Price</label>
+    <input name="price" value="{{ form_data.price }}" />
+    <label>Stock</label>
+    <input name="stock" value="{{ form_data.stock }}" />
+    <label>Warehouse</label>
+    <input name="warehouse" value="{{ form_data.warehouse }}" />
+    <button class="btn">Generate XML and import</button>
   </form>
+  {% if parse_error %}
+    <pre>{{ parse_error }}</pre>
+  {% endif %}
+  {% if xml_payload %}
+    <h3>Generated XML request</h3>
+    <pre>{{ xml_payload }}</pre>
+  {% endif %}
   {% if parsed %}
     <pre>{{ parsed }}</pre>
   {% endif %}
   {% if imported_items %}
     <h3>Imported positions preview</h3>
     <table class="table">
-      <tr><th>Name</th><th>Price</th></tr>
+      <tr><th>SKU</th><th>Name</th><th>Price</th><th>Stock</th><th>Warehouse</th></tr>
       {% for item in imported_items %}
-      <tr><td>{{ item.name }}</td><td>{{ item.price }}</td></tr>
+      <tr><td>{{ item.sku }}</td><td>{{ item.name }}</td><td>{{ item.price }}</td><td>{{ item.stock }}</td><td>{{ item.warehouse }}</td></tr>
       {% endfor %}
     </table>
   {% endif %}
