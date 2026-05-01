@@ -1069,26 +1069,58 @@ def create_app():
     @app.route("/admin/catalog/import/xml", methods=["GET", "POST"])
     @admin_required
     def admin_catalog_import_xml():
-        xml_payload = "<products><item><name>Sample</name></item></products>"
+        form_data = {
+            "supplier": "Acme Electronics",
+            "currency": "USD",
+            "sku": "SKU-10001",
+            "name": "Sample Keyboard",
+            "price": "89.99",
+            "stock": "42",
+            "warehouse": "US-EAST",
+        }
+        xml_payload = None
         parsed = None
         imported_items = []
+        parse_error = None
         if request.method == "POST":
-            xml_payload = request.form.get("xml_payload", xml_payload)
-            parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
-            root = etree.fromstring(xml_payload.encode(), parser=parser)
-            parsed = {"root": root.tag, "text": root.text}
-            for item in root.findall(".//item"):
-                imported_items.append(
-                    {
-                        "name": (item.findtext("name") or "").strip() or "Untitled",
-                        "price": (item.findtext("price") or "0").strip(),
+            xml_payload = request.get_data(as_text=True)
+            try:
+                parser = etree.XMLParser(resolve_entities=True, load_dtd=True, no_network=False)
+                root = etree.fromstring(xml_payload.encode(), parser=parser)
+                parsed = {
+                    "supplier": root.attrib.get("supplier", "unknown"),
+                    "generated_at": root.attrib.get("generatedAt", ""),
+                    "root": root.tag,
+                }
+                for item in root.findall(".//item"):
+                    imported_items.append(
+                        {
+                            "sku": (item.attrib.get("sku") or "").strip() or "n/a",
+                            "name": (item.findtext("name") or "").strip() or "Untitled",
+                            "price": (item.findtext("price") or "0").strip(),
+                            "stock": (item.findtext("stock") or "0").strip(),
+                            "warehouse": (item.findtext("warehouse") or "").strip() or "n/a",
+                        }
+                    )
+                if imported_items:
+                    form_data = {
+                        "supplier": root.attrib.get("supplier", form_data["supplier"]),
+                        "currency": root.find(".//catalog").attrib.get("currency", form_data["currency"]) if root.find(".//catalog") is not None else form_data["currency"],
+                        "sku": imported_items[0]["sku"],
+                        "name": imported_items[0]["name"],
+                        "price": imported_items[0]["price"],
+                        "stock": imported_items[0]["stock"],
+                        "warehouse": imported_items[0]["warehouse"],
                     }
-                )
+            except Exception as exc:
+                parse_error = str(exc)
         return render_template(
             "catalog_import_xml.html",
+            form_data=form_data,
             xml_payload=xml_payload,
             parsed=parsed,
             imported_items=imported_items,
+            parse_error=parse_error,
             cart_count=len(session.get("cart", [])),
         )
 
