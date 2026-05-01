@@ -3,22 +3,69 @@
 {% block content %}
 <div class="panel">
   <h1>Supplier XML import</h1>
-  <p class="muted">Upload supplier feed to sync electronic products.</p>
-  <form method="post">
-    <textarea name="xml_payload" rows="8">{{ xml_payload }}</textarea>
-    <button class="btn">Parse feed</button>
+  <p class="muted">Simulated ERP import: fields from this form are assembled into XML supplier request.</p>
+  <form method="post" id="supplier-import-form">
+    <label>Supplier</label>
+    <input name="supplier" value="{{ form_data.supplier }}" />
+    <label>Currency</label>
+    <input name="currency" value="{{ form_data.currency }}" />
+    <label>SKU</label>
+    <input name="sku" value="{{ form_data.sku }}" />
+    <label>Name</label>
+    <input name="name" value="{{ form_data.name }}" />
+    <label>Price</label>
+    <input name="price" value="{{ form_data.price }}" />
+    <label>Stock</label>
+    <input name="stock" value="{{ form_data.stock }}" />
+    <label>Warehouse</label>
+    <input name="warehouse" value="{{ form_data.warehouse }}" />
+    <button class="btn">Generate XML and import</button>
   </form>
+  {% if parse_error %}
+    <pre>{{ parse_error }}</pre>
+  {% endif %}
   {% if parsed %}
     <pre>{{ parsed }}</pre>
   {% endif %}
   {% if imported_items %}
     <h3>Imported positions preview</h3>
     <table class="table">
-      <tr><th>Name</th><th>Price</th></tr>
+      <tr><th>SKU</th><th>Name</th><th>Price</th><th>Stock</th><th>Warehouse</th></tr>
       {% for item in imported_items %}
-      <tr><td>{{ item.name }}</td><td>{{ item.price }}</td></tr>
+      <tr><td>{{ item.sku }}</td><td>{{ item.name }}</td><td>{{ item.price }}</td><td>{{ item.stock }}</td><td>{{ item.warehouse }}</td></tr>
       {% endfor %}
     </table>
   {% endif %}
 </div>
+<script>
+  (() => {
+    const form = document.getElementById("supplier-import-form");
+    if (!form) return;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const supplier = data.get("supplier") || "Acme Electronics";
+      const currency = data.get("currency") || "USD";
+      const sku = data.get("sku") || "SKU-10001";
+      const name = data.get("name") || "Sample Keyboard";
+      const price = data.get("price") || "89.99";
+      const stock = data.get("stock") || "42";
+      const warehouse = data.get("warehouse") || "US-EAST";
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<supplierFeed supplier="${supplier}" generatedAt="${Date.now()}">\n  <catalog currency="${currency}">\n    <item sku="${sku}">\n      <name>${name}</name>\n      <price>${price}</price>\n      <stock>${stock}</stock>\n      <warehouse>${warehouse}</warehouse>\n    </item>\n  </catalog>\n</supplierFeed>`;
+
+      const response = await fetch("/admin/catalog/import/xml", {
+        method: "POST",
+        headers: {"Content-Type": "application/xml"},
+        body: xml
+      });
+
+      const html = await response.text();
+      document.open();
+      document.write(html);
+      document.close();
+    });
+  })();
+</script>
 {% endblock %}
