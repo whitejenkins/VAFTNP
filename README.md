@@ -24,7 +24,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - `mongo` — коллекции отзывов для NoSQL сценариев.
 - `attacker` — отдельная Linux-машина (netshoot) для приёма reverse-shell/reverse TCP коннектов в лаборатории.
 ```bash
-sudo docker exec -it vulnshop-attacker /bin/bash`
+sudo docker exec -it vulnshop-attacker /bin/bash
 ```
 - Добавлен более реалистичный UI магазина: каталог с фильтрами, карточки товара, корзина, checkout и личный кабинет.
 
