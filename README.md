@@ -61,8 +61,7 @@ sudo docker exec -it vulnshop-attacker /bin/bash
 - 2FA bypass (намеренная уязвимость): при наличии `pre_2fa_user` можно открыть `/account/dashboard` и получить полноценную сессию без проверки OTP
 - Default credentials: `alice/dancercHick2000`
 - Vulnerable password reset: токен предсказуем
-- HTTP Verb tampering: `PUT /auth/login`
-- 2FA response tampering bypass: `POST /auth/2fa` может вернуть `401` с уже активированной сессией (если перехватить и подменить статус на `200`, защищённая страница отображается как будто 2FA пройдена)
+- HTTP Verb tampering: у `GET/POST /auth/login` действует rate-limit, а у `PUT /auth/login` — нет; при этом `PUT` принимает только `username` и выставляет `pre_2fa_user` без пароля, что в связке с 2FA-bypass на `/account/dashboard` даёт захват сессии пользователя.
 - IDOR: `GET /orders/<id>`
 - Privilege escalation: роль берётся из cookie `role` (base64), можно поднять права подменой `dXNlcg==` (`user`) -> `YWRtaW4=` (`admin`)
 

@@ -356,6 +356,15 @@ def create_app():
 
     @app.route("/auth/login", methods=["GET", "POST", "PUT"])
     def login():
+        if request.method == "GET":
+            username = (request.args.get("username") or "").strip()
+            if username:
+                retry_after = check_login_rate_limit(username)
+                if retry_after > 0:
+                    flash(f"Too many login attempts for {username}. Try again in {retry_after} seconds.", "error")
+                    return render_template("login.html", cart_count=len(session.get("cart", []))), 429
+            return render_template("login.html", cart_count=len(session.get("cart", [])))
+
         if request.method == "PUT":
             username = request.args.get("username")
             with mysql_conn().cursor() as cur:
