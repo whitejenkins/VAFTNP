@@ -9,10 +9,8 @@ import binascii
 import random
 import shutil
 from functools import wraps
-from urllib.parse import urlparse
 
 import pymysql
-import requests
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 from flask import flash, Flask, jsonify, make_response, redirect, render_template, render_template_string, request, session, url_for
@@ -1223,50 +1221,6 @@ def create_app():
             rows = cur.fetchall()
         return jsonify({"orders": rows})
 
-    @app.route("/files/upload", methods=["GET", "POST"])
-    @login_required
-    def upload_file():
-        if request.method == "POST":
-            f = request.files.get("file")
-            if not f:
-                return "no file", 400
-            filename = f.filename
-            if ".php" in filename:
-                return "blocked by blacklist", 400
-            if not (filename.endswith(".jpg") or filename.endswith(".png") or filename.endswith(".txt") or filename.endswith(".php5")):
-                return "extension not allowed", 400
-            if len(f.read()) > 1024 * 1024:
-                return "too large", 400
-            f.stream.seek(0)
-            save_path = os.path.join("app/static/uploads", filename)
-            f.save(save_path)
-            suspicious = any(x in filename.lower() for x in [".php5", ".phtml", "..", ".jpg.php"])
-            return f"uploaded to /static/uploads/{filename}" + (" | upload-bypass-pattern" if suspicious else "")
-        return render_template("upload.html")
-
-    @app.route("/pages")
-    def include_page():
-        page = request.args.get("page", "home.html")
-        path = os.path.join("app/templates/pages", page)
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = f.read()
-                if "../" in page:
-                    data += "<!-- traversal-pattern -->"
-                return data
-        except FileNotFoundError:
-            return "not found", 404
-
-    @app.route("/remote/include")
-    def remote_include():
-        url = request.args.get("url", "https://example.com")
-        parsed = urlparse(url)
-        if parsed.scheme not in ["http", "https"]:
-            return "bad scheme", 400
-        content = requests.get(url, timeout=3).text
-        injected = "example.com" not in parsed.netloc
-        return render_template_string(content) + ("<!-- rfi-pattern -->" if injected else "")
-
     @app.route("/openapi.json")
     def openapi():
         spec = {
@@ -1294,7 +1248,6 @@ def create_app():
                 "/admin/users/{user_id}/password": {"post": {"summary": "Change user password", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/approve": {"post": {"summary": "Approve pending review", "responses": {"200": {"description": "ok"}}}},
                 "/admin/reviews/{review_id}/reject": {"post": {"summary": "Reject pending review", "responses": {"200": {"description": "ok"}}}},
-                "/files/upload": {"post": {"summary": "Upload file", "responses": {"200": {"description": "ok"}}}},
                 "/swagger": {"get": {"summary": "Swagger UI", "responses": {"200": {"description": "ok"}}}},
             },
         }
