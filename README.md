@@ -23,7 +23,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - `web` — Flask приложение.
 - `mysql` — основная SQL БД.
 - `mongo` — коллекции отзывов для NoSQL сценариев.
-- `attacker` — отдельная Linux-машина для приёма reverse-shell/reverse TCP коннектов в лаборатории (при старте контейнера в `custom-cont-init.d` выполняется установка `responder` (через `apt` или `apk`, в зависимости от базового образа)).
+- `attacker` — отдельная Linux-машина для приёма reverse-shell/reverse TCP коннектов в лаборатории (при старте автоматически устанавливаются Responder и nmap).
 ```bash
 sudo docker exec -it vulnshop-attacker /bin/bash
 ```
@@ -189,3 +189,9 @@ curl "http://localhost:8000/remote/include?url=https://example.org"
 - `niko / Qw#4Rp!8Tz@1Yv$6Nd2`
 
 > В БД пароли seed-пользователей хранятся в виде MD5-хешей (для учебного cracking-сценария через hashcat).
+
+
+## Сегментация сети
+- `mysql`, `mongo` и `metasploitable2` подключены только к внутренней сети `backend` (internal), где также находится `web`.
+- `attacker` подключён только к сети `frontend` и не имеет маршрута к сервисам внутренней `backend` сети.
+- Публикация портов MySQL/Mongo на хост удалена: доступ к ним есть только из `web` контейнера.

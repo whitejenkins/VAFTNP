@@ -18,6 +18,9 @@ services:
         condition: service_started
     volumes:
       - ./app:/app/app
+    networks:
+      - frontend
+      - backend
 
   mysql:
     image: mysql:8.0
@@ -26,8 +29,6 @@ services:
       - MYSQL_DATABASE=vulnshop
       - MYSQL_USER=vulnshop
       - MYSQL_PASSWORD=vulnshop
-    ports:
-      - "127.0.0.1:3307:3306"
     volumes:
       - ./mysql-init:/docker-entrypoint-initdb.d
     healthcheck:
@@ -35,15 +36,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks:
+      - backend
 
   mongo:
     image: mongo:7
-    ports:
-      - "127.0.0.1:27018:27017"
+    networks:
+      - backend
 
   attacker:
     image: lscr.io/linuxserver/openssh-server:latest
-    command: /bin/sh -c "apt-get update && apt-get install -y responder && exec /init"
     container_name: vulnshop-attacker
     environment:
       - USER_NAME=attacker
@@ -51,14 +53,27 @@ services:
       - PASSWORD_ACCESS=true
       - SUDO_ACCESS=true
     volumes:
-      - ./attacker-init/10-install-responder.sh:/custom-cont-init.d/10-install-responder.sh:ro
+      - ./attacker-init/10-install-responder.sh:/custom-cont-init.d/10-install-responder.sh
+      - ./attacker-init/20-enable-sudo.sh:/custom-cont-init.d/20-enable-sudo.sh
+      - ./attacker-init/30-install-nmap.sh:/custom-cont-init.d/30-install-nmap.sh
     ports:
       - "127.0.0.1:2222:2222"
       - "127.0.0.1:4444:4444"
       - "127.0.0.1:5555:5555"
+    networks:
+      - frontend
 
   metasploitable2:
     image: tleemcjr/metasploitable2:latest
     container_name: vulnshop-metasploitable2
     tty: true
     stdin_open: true
+    networks:
+      - backend
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
