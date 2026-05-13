@@ -504,7 +504,7 @@ def create_app():
     def admin_user_promote(user_id):
         with mysql_conn().cursor() as cur:
             cur.execute("UPDATE users SET role='admin' WHERE id=%s", (user_id,))
-        flash("User role promoted to admin.", "success")
+        flash("The user has been granted administrator privileges. Please log in again for the changes to take effect.", "success")
         return redirect(url_for("admin_php"))
 
     @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
