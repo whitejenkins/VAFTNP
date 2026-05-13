@@ -43,7 +43,6 @@ services:
 
   attacker:
     image: lscr.io/linuxserver/openssh-server:latest
-    command: /bin/sh -c "apt-get update && apt-get install -y responder && exec /init"
     container_name: vulnshop-attacker
     environment:
       - USER_NAME=attacker
@@ -51,7 +50,8 @@ services:
       - PASSWORD_ACCESS=true
       - SUDO_ACCESS=true
     volumes:
-      - ./attacker-init/10-install-responder.sh:/custom-cont-init.d/10-install-responder.sh:ro
+      - ./attacker-init/10-install-responder.sh:/custom-cont-init.d/10-install-responder.sh
+      - ./attacker-init/20-enable-sudo.sh:/custom-cont-init.d/20-enable-sudo.sh
     ports:
       - "127.0.0.1:2222:2222"
       - "127.0.0.1:4444:4444"
