@@ -11,7 +11,7 @@ if command -v apt-get >/dev/null 2>&1; then
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y nmap
 elif command -v apk >/dev/null 2>&1; then
-  apk add --no-cache nmap
+  sudo apk add --no-cache nmap
 else
   echo "[attacker-init] No supported package manager found (apt-get/apk)." >&2
   exit 1
