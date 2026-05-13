@@ -2,7 +2,7 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - FLASK_SECRET=dev-secret-key
       - MYSQL_HOST=mysql
@@ -27,7 +27,7 @@ services:
       - MYSQL_USER=vulnshop
       - MYSQL_PASSWORD=vulnshop
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - ./mysql-init:/docker-entrypoint-initdb.d
     healthcheck:
@@ -39,17 +39,20 @@ services:
   mongo:
     image: mongo:7
     ports:
-      - "27018:27017"
+      - "127.0.0.1:27018:27017"
 
   attacker:
-    image: nicolaka/netshoot:latest
+    image: lscr.io/linuxserver/openssh-server:latest
     container_name: vulnshop-attacker
-    command: ["sleep", "infinity"]
-    tty: true
-    stdin_open: true
+    environment:
+      - USER_NAME=attacker
+      - USER_PASSWORD=PentestPass
+      - PASSWORD_ACCESS=true
+      - SUDO_ACCESS=true
     ports:
-      - "4444:4444"
-      - "5555:5555"
+      - "127.0.0.1:2222:2222"
+      - "127.0.0.1:4444:4444"
+      - "127.0.0.1:5555:5555"
 
   metasploitable2:
     image: tleemcjr/metasploitable2:latest
