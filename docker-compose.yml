@@ -42,12 +42,15 @@ services:
       - "127.0.0.1:27018:27017"
 
   attacker:
-    image: nicolaka/netshoot:latest
+    image: lscr.io/linuxserver/openssh-server:latest
     container_name: vulnshop-attacker
-    command: ["sleep", "infinity"]
-    tty: true
-    stdin_open: true
+    environment:
+      - USER_NAME=attacker
+      - USER_PASSWORD=PentestPass
+      - PASSWORD_ACCESS=true
+      - SUDO_ACCESS=true
     ports:
+      - "127.0.0.1:2222:2222"
       - "127.0.0.1:4444:4444"
       - "127.0.0.1:5555:5555"
 
