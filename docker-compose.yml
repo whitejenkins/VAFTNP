@@ -50,6 +50,8 @@ services:
       - USER_PASSWORD=PentestPass
       - PASSWORD_ACCESS=true
       - SUDO_ACCESS=true
+    volumes:
+      - ./attacker-init/10-install-responder.sh:/custom-cont-init.d/10-install-responder.sh:ro
     ports:
       - "127.0.0.1:2222:2222"
       - "127.0.0.1:4444:4444"
