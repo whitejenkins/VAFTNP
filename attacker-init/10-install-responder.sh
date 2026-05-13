@@ -10,7 +10,7 @@ log() {
 install_from_apt() {
   log "Trying apt package installation..."
   apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y responder
+  DEBIAN_FRONTEND=noninteractive apt-get install -y responder python3-pip
 }
 
 install_from_apk_or_source() {
@@ -31,6 +31,26 @@ install_from_apk_or_source() {
   ln -sf "$RESPONDER_DIR/Responder.py" /usr/local/bin/responder
   chmod +x "$RESPONDER_DIR/Responder.py"
 }
+ensure_aioquic() {
+  if python3 -c "import aioquic" >/dev/null 2>&1; then
+    log "aioquic dependency already present."
+    return 0
+  fi
+
+  log "Installing missing dependency: aioquic"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-aioquic || true
+  fi
+
+  if ! python3 -c "import aioquic" >/dev/null 2>&1; then
+    if ! python3 -m pip --version >/dev/null 2>&1 && command -v apk >/dev/null 2>&1; then
+      apk add --no-cache py3-pip
+    fi
+    python3 -m pip install --no-cache-dir aioquic
+  fi
+}
+
 
 log "Installing responder package..."
 if command -v responder >/dev/null 2>&1; then
@@ -43,6 +63,8 @@ else
   log "No supported package manager found (apt-get/apk)."
   exit 1
 fi
+
+ensure_aioquic
 
 if command -v responder >/dev/null 2>&1; then
   log "Responder installation completed successfully."
