@@ -47,7 +47,7 @@ ensure_aioquic() {
     if ! python3 -m pip --version >/dev/null 2>&1 && command -v apk >/dev/null 2>&1; then
       apk add --no-cache py3-pip
     fi
-    python3 -m pip install --no-cache-dir aioquic
+    python3 -m pip install --no-cache-dir aioquic --break-system-packages
   fi
 }
 
