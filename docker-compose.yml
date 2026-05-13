@@ -42,7 +42,8 @@ services:
       - "127.0.0.1:27018:27017"
 
   attacker:
-    image: lscr.io/linuxserver/openssh-server:latest
+    build:
+      context: ./attacker
     container_name: vulnshop-attacker
     environment:
       - USER_NAME=attacker

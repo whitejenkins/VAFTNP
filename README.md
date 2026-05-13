@@ -23,7 +23,7 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 - `web` — Flask приложение.
 - `mysql` — основная SQL БД.
 - `mongo` — коллекции отзывов для NoSQL сценариев.
-- `attacker` — отдельная Linux-машина (netshoot) для приёма reverse-shell/reverse TCP коннектов в лаборатории.
+- `attacker` — отдельная Linux-машина для приёма reverse-shell/reverse TCP коннектов в лаборатории (в контейнер предустановлен `responder` через `apt`).
 ```bash
 sudo docker exec -it vulnshop-attacker /bin/bash
 ```
