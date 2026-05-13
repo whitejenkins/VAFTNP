@@ -27,6 +27,14 @@ Swagger UI доступен на `http://localhost:8000/swagger`.
 ```bash
 sudo docker exec -it vulnshop-attacker /bin/bash
 ```
+
+OR
+
+```bash
+ssh attacker@127.0.0.1 -p 2222
+Password: PentestPass
+```
+
 - Добавлен более реалистичный UI магазина: каталог с фильтрами, карточки товара, корзина, checkout и личный кабинет.
 
 ## Карта уязвимостей (без подсказок в интерфейсе)
