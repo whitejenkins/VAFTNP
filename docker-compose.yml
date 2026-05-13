@@ -42,8 +42,8 @@ services:
       - "127.0.0.1:27018:27017"
 
   attacker:
-    build:
-      context: ./attacker
+    image: lscr.io/linuxserver/openssh-server:latest
+    command: /bin/sh -c "apt-get update && apt-get install -y responder && exec /init"
     container_name: vulnshop-attacker
     environment:
       - USER_NAME=attacker
